@@ -161,10 +161,6 @@ void Reflow_Init(void) {
   // PID_Direction_Direct); PID_init(&PID, 20, 0.04, 25, PID_Direction_Direct);
   // // Improvement as far as I can tell, still work in progress
   //  Can't supply tuning to PID_Init when not using the default timebase
-  PID_init(&PID, 0, 0, 0);
-  PID_SetSampleTime(&PID, PID_TIMEBASE);
-  // Adjusted values to compensate for the incorrect timebase earlier
-  PID_SetTunings(&PID, 20, 0.016, 62.5);
   // PID_SetTunings(&PID, 80, 0, 0); // This results in oscillations with 14.5s
   // cycle time PID_SetTunings(&PID, 30, 0, 0); // This results in oscillations
   // with 14.5s cycle time PID_SetTunings(&PID, 15, 0, 0); PID_SetTunings(&PID,
@@ -184,6 +180,14 @@ void Reflow_Init(void) {
   PID_SetOutputLimits(&PID, -255, 255);
   PID_SetMode(&PID, PID_Mode_Manual);
   PID_SetMode(&PID, PID_Mode_Automatic);
+
+  PID_init(&PID, 0, 0, 0);
+  PID_SetSampleTime(&PID, PID_TIMEBASE);
+  // Adjusted values to compensate for the incorrect timebase earlier
+  PID_SetTunings(&PID, NV_GetFloatConfig(PID_K_VALUE_H, PID_K_DENUM),
+                 NV_GetFloatConfig(PID_I_VALUE_H, PID_I_DENUM),
+                 NV_GetFloatConfig(PID_D_VALUE_H, PID_D_DENUM));
+
   RTC_Zero();
 
   // Start work
@@ -246,7 +250,7 @@ int Reflow_GetTimeLeft(void) {
 void Reflow_setOuput(int16_t out, uint8_t* pheat, uint8_t* pfan) {
   if(out > 0) {
     *pheat = out;
-    pfan   = NV_GetConfig(REFLOW_MIN_FAN_SPEED);
+    *pfan  = NV_GetConfig(REFLOW_MIN_FAN_SPEED);
   } else {
     *pheat = 0;
     *pfan  = -out;

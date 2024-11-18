@@ -81,12 +81,46 @@ void NV_SetConfig(NVItem_t item, uint8_t value) {
 
 // Periodic updater of NV
 int32_t NV_Work(void) {
-	static uint8_t count = 0;
-	if (nvupdatepending) count ++;
-	if (count == 4) {
-		nvupdatepending = count = 0;
-		printf("\nFlushing NV copy to EE...");
-		EEPROM_Write(0x62, (uint8_t*)&myNV, sizeof(myNV));
-	}
-	return nvupdatepending ? (TICKS_SECS(2)) : -1;
+  static uint8_t count = 0;
+  if(nvupdatepending)
+    count++;
+  if(count == 4) {
+    nvupdatepending = count = 0;
+    printf("\nFlushing NV copy to EE...");
+    EEPROM_Write(0x62, (uint8_t*)&myNV, sizeof(myNV));
+  }
+  return nvupdatepending ? (TICKS_SECS(2)) : -1;
+}
+
+uint16_t NV_GetWord(NVItem_t item) {
+  if(item > (NVITEM_NUM_ITEMS - 2)) {
+    return 0;
+  }
+  return (((uint16_t)myNV.config[item]) << 8) +
+         ((uint16_t)myNV.config[item + 1]);
+}
+
+void NV_PutWord(NVItem_t item, uint16_t value) {
+  if(item > NVITEM_NUM_ITEMS - 2) {
+    return;
+  }
+  myNV.config[item]     = (value >> 8) & 0xff;
+  myNV.config[item + 1] = (value & 0xff);
+  SetNVUpdatePending();
+}
+
+float NV_GetFloatConfig(NVItem_t item, uint16_t base) {
+  int16_t value = NV_GetWord(item);
+  return (float)value / (float)base;
+}
+
+void NV_SetFloatConfig(NVItem_t item, float value, uint16_t base) {
+  value *= base;
+  if(value > 32767) {
+    value = 32767;
+  }
+  if(value < -32768) {
+    value = -32768;
+  }
+  NV_PutWord(item, (int16_t)value);
 }
