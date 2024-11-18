@@ -1,0 +1,15 @@
+# -*- mode:yaml -*-
+---
+BasedOnStyle: LLVM
+IndentWidth: 2
+SpacesInParentheses: false
+#BreakBeforeBraces: Allman
+SpaceBeforeParens: false
+AllowShortEnumsOnASingleLine: false
+BreakBeforeBraces: Custom
+PointerAlignment: Left
+BraceWrapping:
+  AfterEnum: true
+AlignConsecutiveAssignments: AcrossComments
+BinPackParameters: false
+---

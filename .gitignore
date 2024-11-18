@@ -33,3 +33,4 @@ Release/
 build
 lpc21isp
 compile_commands.json
+/.cache/
