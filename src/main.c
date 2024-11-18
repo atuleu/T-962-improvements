@@ -339,13 +339,14 @@ static int32_t Main_Work(void) {
 #define MAX_DISPLAYED_ITEMS 4
     int startidx = 0;
     int endidx   = MATH_MIN(4, Setup_getNumItems());
-    if(selected > MAX_DISPLAYED_ITEMS) {
-      startidx = 4;
-      endidx   = MATH_MIN(Setup_getNumItems(), 7);
+    if(selected >= MAX_DISPLAYED_ITEMS) {
+      startidx = MAX_DISPLAYED_ITEMS;
+      endidx   = MATH_MIN(Setup_getNumItems(), 2 * MAX_DISPLAYED_ITEMS - 1);
 
       while(endidx <= selected) {
-        startidx += 3;
-        endidx = MATH_MIN(Setup_getNumItems(), endidx + 3);
+        startidx += MAX_DISPLAYED_ITEMS - 1;
+        endidx =
+            MATH_MIN(Setup_getNumItems(), endidx + MAX_DISPLAYED_ITEMS - 1);
       }
     }
 
