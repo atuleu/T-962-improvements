@@ -34,6 +34,7 @@ static setupMenuStruct setupmenu[] = {
     {"PID I Constant %+1.3f", PID_I_VALUE_H, 0, 1000, 0, 0.001f, true},
     {"PID D Constant %+1.2f", PID_D_VALUE_H, 0, 10000, 0, 0.1f, true},
 };
+
 #define NUM_SETUP_ITEMS (sizeof(setupmenu) / sizeof(setupmenu[0]))
 
 int Setup_getNumItems(void) { return NUM_SETUP_ITEMS; }

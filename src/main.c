@@ -18,29 +18,29 @@
  */
 
 #include "LPC214x.h"
+#include "adc.h"
+#include "buzzer.h"
+#include "eeprom.h"
+#include "i2c.h"
+#include "io.h"
+#include "keypad.h"
+#include "lcd.h"
+#include "max31855.h"
+#include "nvstorage.h"
+#include "onewire.h"
+#include "reflow.h"
+#include "reflow_profiles.h"
+#include "rtc.h"
+#include "sched.h"
+#include "sensor.h"
+#include "serial.h"
+#include "setup.h"
+#include "systemfan.h"
+#include "version.h"
+#include "vic.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include "serial.h"
-#include "lcd.h"
-#include "io.h"
-#include "sched.h"
-#include "onewire.h"
-#include "adc.h"
-#include "i2c.h"
-#include "rtc.h"
-#include "eeprom.h"
-#include "keypad.h"
-#include "reflow.h"
-#include "reflow_profiles.h"
-#include "sensor.h"
-#include "buzzer.h"
-#include "nvstorage.h"
-#include "version.h"
-#include "vic.h"
-#include "max31855.h"
-#include "systemfan.h"
-#include "setup.h"
 
 extern uint8_t logobmp[];
 extern uint8_t stopbmp[];
@@ -48,114 +48,124 @@ extern uint8_t selectbmp[];
 extern uint8_t editbmp[];
 extern uint8_t f3editbmp[];
 
+#define MATH_MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MATH_MIN(a, b) ((a) > (b) ? (b) : (a))
+
 // No version.c file generated for LPCXpresso builds, fall back to this
 __attribute__((weak)) const char* Version_GetGitVersion(void) {
-	return "no version info";
+  return "no version info";
 }
 
-static char* format_about = \
-"\nT-962-controller open source firmware (%s)" \
-"\n" \
-"\nSee https://github.com/UnifiedEngineering/T-962-improvement for more details." \
-"\n" \
-"\nInitializing improved reflow oven...";
+static char* format_about =
+    "\nT-962-controller open source firmware (%s)"
+    "\n"
+    "\nSee https://github.com/UnifiedEngineering/T-962-improvement for more "
+    "details."
+    "\n"
+    "\nInitializing improved reflow oven...";
 
-static char* help_text = \
-"\nT-962-controller serial interface.\n\n" \
-" about                   Show about + debug information\n" \
-" bake <setpoint>         Enter Bake mode with setpoint\n" \
-" bake <setpoint> <time>  Enter Bake mode with setpoint for <time> seconds\n" \
-" help                    Display help text\n" \
-" list profiles           List available reflow profiles\n" \
-" list settings           List machine settings\n" \
-" quiet                   No logging in standby mode\n" \
-" reflow                  Start reflow with selected profile\n" \
-" setting <id> <value>    Set setting id to value\n" \
-" select profile <id>     Select reflow profile by id\n" \
-" stop                    Exit reflow or bake mode\n" \
-" values                  Dump currently measured values\n" \
-"\n";
+static char* help_text =
+    "\nT-962-controller serial interface.\n\n"
+    " about                   Show about + debug information\n"
+    " bake <setpoint>         Enter Bake mode with setpoint\n"
+    " bake <setpoint> <time>  Enter Bake mode with setpoint for <time> "
+    "seconds\n"
+    " help                    Display help text\n"
+    " list profiles           List available reflow profiles\n"
+    " list settings           List machine settings\n"
+    " quiet                   No logging in standby mode\n"
+    " reflow                  Start reflow with selected profile\n"
+    " setting <id> <value>    Set setting id to value\n"
+    " select profile <id>     Select reflow profile by id\n"
+    " stop                    Exit reflow or bake mode\n"
+    " values                  Dump currently measured values\n"
+    "\n";
 
 static int32_t Main_Work(void);
 
 int main(void) {
-	char buf[22];
-	int len;
+  char buf[22];
+  int len;
 
-	IO_JumpBootloader();
+  IO_JumpBootloader();
 
-	PLLCFG = (1 << 5) | (4 << 0); //PLL MSEL=0x4 (+1), PSEL=0x1 (/2) so 11.0592*5 = 55.296MHz, Fcco = (2x55.296)*2 = 221MHz which is within 156 to 320MHz
-	PLLCON = 0x01;
-	PLLFEED = 0xaa;
-	PLLFEED = 0x55; // Feed complete
-	while (!(PLLSTAT & (1 << 10))); // Wait for PLL to lock
-	PLLCON = 0x03;
-	PLLFEED = 0xaa;
-	PLLFEED = 0x55; // Feed complete
-	VPBDIV = 0x01; // APB runs at the same frequency as the CPU (55.296MHz)
-	MAMTIM = 0x03; // 3 cycles flash access recommended >40MHz
-	MAMCR = 0x02; // Fully enable memory accelerator
+  PLLCFG =
+      (1 << 5) |
+      (4 << 0); // PLL MSEL=0x4 (+1), PSEL=0x1 (/2) so 11.0592*5 = 55.296MHz,
+                // Fcco = (2x55.296)*2 = 221MHz which is within 156 to 320MHz
+  PLLCON  = 0x01;
+  PLLFEED = 0xaa;
+  PLLFEED = 0x55; // Feed complete
+  while(!(PLLSTAT & (1 << 10)))
+    ; // Wait for PLL to lock
+  PLLCON  = 0x03;
+  PLLFEED = 0xaa;
+  PLLFEED = 0x55; // Feed complete
+  VPBDIV  = 0x01; // APB runs at the same frequency as the CPU (55.296MHz)
+  MAMTIM  = 0x03; // 3 cycles flash access recommended >40MHz
+  MAMCR   = 0x02; // Fully enable memory accelerator
 
-	VIC_Init();
-	Sched_Init();
-	IO_Init();
-	Set_Heater(0);
-	Set_Fan(0);
-	Serial_Init();
-	printf(format_about, Version_GetGitVersion());
+  VIC_Init();
+  Sched_Init();
+  IO_Init();
+  Set_Heater(0);
+  Set_Fan(0);
+  Serial_Init();
+  printf(format_about, Version_GetGitVersion());
 
-	I2C_Init();
-	EEPROM_Init();
-	NV_Init();
+  I2C_Init();
+  EEPROM_Init();
+  NV_Init();
 
-	LCD_Init();
-	LCD_BMPDisplay(logobmp, 0, 0);
+  LCD_Init();
+  LCD_BMPDisplay(logobmp, 0, 0);
 
-	IO_InitWatchdog();
-	IO_PrintResetReason();
+  IO_InitWatchdog();
+  IO_PrintResetReason();
 
-	len = IO_Partinfo(buf, sizeof(buf), "%s rev %c");
-	LCD_disp_str((uint8_t*)buf, len, 0, 64 - 6, FONT6X6);
-	printf("\nRunning on an %s", buf);
+  len = IO_Partinfo(buf, sizeof(buf), "%s rev %c");
+  LCD_disp_str((uint8_t*)buf, len, 0, 64 - 6, FONT6X6);
+  printf("\nRunning on an %s", buf);
 
-	len = snprintf(buf, sizeof(buf), "%s", Version_GetGitVersion());
-	LCD_disp_str((uint8_t*)buf, len, 128 - (len * 6), 0, FONT6X6);
+  len = snprintf(buf, sizeof(buf), "%s", Version_GetGitVersion());
+  LCD_disp_str((uint8_t*)buf, len, 128 - (len * 6), 0, FONT6X6);
 
-	LCD_FB_Update();
-	Keypad_Init();
-	Buzzer_Init();
-	ADC_Init();
-	RTC_Init();
-	OneWire_Init();
-	SPI_TC_Init();
-	Reflow_Init();
-	SystemFan_Init();
+  LCD_FB_Update();
+  Keypad_Init();
+  Buzzer_Init();
+  ADC_Init();
+  RTC_Init();
+  OneWire_Init();
+  SPI_TC_Init();
+  Reflow_Init();
+  SystemFan_Init();
 
-	Sched_SetWorkfunc(MAIN_WORK, Main_Work);
-	Sched_SetState(MAIN_WORK, 1, TICKS_SECS(2)); // Enable in 2 seconds
+  Sched_SetWorkfunc(MAIN_WORK, Main_Work);
+  Sched_SetState(MAIN_WORK, 1, TICKS_SECS(2)); // Enable in 2 seconds
 
-	Buzzer_Beep(BUZZ_1KHZ, 255, TICKS_MS(100));
+  Buzzer_Beep(BUZZ_1KHZ, 255, TICKS_MS(100));
 
-	while (1) {
+  while(1) {
 #ifdef ENABLE_SLEEP
-		int32_t sleeptime;
-		sleeptime = Sched_Do(0); // No fast-forward support
-		//printf("\n%d ticks 'til next activity"),sleeptime);
+    int32_t sleeptime;
+    sleeptime = Sched_Do(0); // No fast-forward support
+    // printf("\n%d ticks 'til next activity"),sleeptime);
 #else
-		Sched_Do(0); // No fast-forward support
+    Sched_Do(0); // No fast-forward support
 #endif
-	}
-	return 0;
+  }
+  return 0;
 }
 
-typedef enum eMainMode {
-	MAIN_HOME = 0,
-	MAIN_ABOUT,
-	MAIN_SETUP,
-	MAIN_BAKE,
-	MAIN_SELECT_PROFILE,
-	MAIN_EDIT_PROFILE,
-	MAIN_REFLOW
+typedef enum eMainMode
+{
+  MAIN_HOME = 0,
+  MAIN_ABOUT,
+  MAIN_SETUP,
+  MAIN_BAKE,
+  MAIN_SELECT_PROFILE,
+  MAIN_EDIT_PROFILE,
+  MAIN_REFLOW
 } MainMode_t;
 
 static int32_t Main_Work(void) {
@@ -325,24 +335,33 @@ static int32_t Main_Work(void) {
     len = snprintf(buf, sizeof(buf), "Setup/calibration");
     LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), y, FONT6X6);
     y += 7;
+
 #define MAX_DISPLAYED_ITEMS 4
-    int startIdx = selected / MAX_DISPLAYED_ITEMS;
-    if(startIdx > 0) {
+    int startidx = 0;
+    int endidx   = MATH_MIN(4, Setup_getNumItems());
+    if(selected > MAX_DISPLAYED_ITEMS) {
+      startidx = 4;
+      endidx   = MATH_MIN(Setup_getNumItems(), 7);
+
+      while(endidx <= selected) {
+        startidx += 3;
+        endidx = MATH_MIN(Setup_getNumItems(), endidx + 3);
+      }
+    }
+
+    if(startidx > 0) {
       LCD_disp_str((uint8_t*)"...", 3, 0, y, FONT6X6);
       y += 7;
     }
-    int endIdx = startIdx + 4;
-    if(endIdx > Setup_getNumItems()) {
-      endIdx = Setup_getNumItems();
-    }
-    for(int i = startIdx; i < endIdx; i++) {
+
+    for(int i = startidx; i < endidx; i++) {
       len = Setup_snprintFormattedValue(buf, sizeof(buf), i);
       LCD_disp_str((uint8_t*)buf, len, 0, y,
                    FONT6X6 | (selected == i) ? INVERT : 0);
       y += 7;
     }
 
-    if(endIdx != Setup_getNumItems()) {
+    if(endidx < Setup_getNumItems()) {
       LCD_disp_str((uint8_t*)"...", 3, 0, y, FONT6X6);
       y += 7;
     }
