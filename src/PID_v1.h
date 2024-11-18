@@ -12,12 +12,6 @@ typedef enum
   PID_Mode_Manual    = 0
 } PidModeType;
 
-typedef enum
-{
-  PID_Direction_Direct  = 0,
-  PID_Direction_Reverse = 1
-} PidDirectionType;
-
 typedef struct {
   FloatType dispKp; // * we'll hold on to the tuning parameters in user-entered
   FloatType dispKi; //   format for display purposes
@@ -27,18 +21,8 @@ typedef struct {
   FloatType ki; // * (I)ntegral Tuning Parameter
   FloatType kd; // * (D)erivative Tuning Parameter
 
-  PidDirectionType controllerDirection;
-
-  // * Pointers to the Input, Output, and Setpoint variables
-  //   This creates a hard link between the variables and the
-  //   PID, freeing the user from having to constantly tell us
-  //   what these values are.  with pointers we'll just know.
-  FloatType myInput;
-  FloatType myOutput;
-  FloatType mySetpoint;
-
   //  unsigned long lastTime;
-  FloatType ITerm, lastInput;
+  FloatType ITerm, lastError;
 
   unsigned long SampleTime;
   FloatType outMin, outMax;
@@ -50,11 +34,7 @@ typedef struct {
 
 //  constructor.  links the PID to the Input, Output, and
 //  Setpoint.  Initial tuning parameters are also set here
-void PID_init(PidType* pid,
-              FloatType kp,
-              FloatType ki,
-              FloatType kd,
-              PidDirectionType controllerDirection);
+void PID_init(PidType* pid, FloatType kp, FloatType ki, FloatType kd);
 
 // sets PID to either Manual (0) or Auto (non-0)
 void PID_SetMode(PidType* pid, PidModeType mode);
@@ -63,7 +43,7 @@ void PID_SetMode(PidType* pid, PidModeType mode);
 // called every time loop() cycles. ON/OFF and
 // calculation frequency can be set using SetMode
 // SetSampleTime respectively
-bool PID_Compute(PidType* pid);
+FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual);
 
 // clamps the output to a specific range. 0-255 by default, but
 // it's likely the user will want to change this depending on
@@ -77,12 +57,6 @@ void PID_SetOutputLimits(PidType* pid, FloatType min, FloatType max);
 // constructor, this function gives the user the option
 // of changing tunings during runtime for Adaptive control
 void PID_SetTunings(PidType* pid, FloatType kp, FloatType ki, FloatType kd);
-
-// Sets the Direction, or "Action" of the controller. DIRECT
-// means the output will increase when error is positive. REVERSE
-// means the opposite.  it's very unlikely that this will be needed
-// once it is set in the constructor.
-void PID_SetControllerDirection(PidType* pid, PidDirectionType Direction);
 
 // sets the frequency, in Milliseconds, with which
 // the PID calculation is performed.  default is 100
@@ -98,7 +72,6 @@ FloatType PID_GetKp(PidType* pid);
 FloatType PID_GetKi(PidType* pid);
 FloatType PID_GetKd(PidType* pid);
 PidModeType PID_GetMode(PidType* pid);
-PidDirectionType PID_GetDirection(PidType* pid);
 
 // void PID_Initialize(PidType* pid);
 #endif

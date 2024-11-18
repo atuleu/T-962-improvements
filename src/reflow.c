@@ -17,19 +17,19 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "reflow.h"
 #include "LPC214x.h"
-#include <stdint.h>
-#include <stdio.h>
-#include "t962.h"
-#include "reflow_profiles.h"
+#include "PID_v1.h"
 #include "io.h"
 #include "lcd.h"
-#include "rtc.h"
-#include "PID_v1.h"
-#include "sched.h"
 #include "nvstorage.h"
+#include "reflow_profiles.h"
+#include "rtc.h"
+#include "sched.h"
 #include "sensor.h"
-#include "reflow.h"
+#include "t962.h"
+#include <stdint.h>
+#include <stdio.h>
 
 // Standby temperature in degrees Celsius
 #define STANDBYTEMP (50)
@@ -46,140 +46,148 @@ static int bake_timer = 0;
 
 static float avgtemp;
 
-static uint8_t reflowdone = 0;
+static bool reflowdone     = false;
 static ReflowMode_t mymode = REFLOW_STANDBY;
-static uint16_t numticks = 0;
+static uint16_t numticks   = 0;
 
 static int standby_logging = 0;
 
+bool Reflow_RunProfile(uint32_t thetime,
+                       float meastemp,
+                       uint8_t* pheat,
+                       uint8_t* pfan);
+
+bool Reflow_RunManual(float meastemp,
+                      uint8_t* pheat,
+                      uint8_t* pfan,
+                      int32_t setpoint);
+
 static int32_t Reflow_Work(void) {
-	static ReflowMode_t oldmode = REFLOW_INITIAL;
-	static uint32_t lasttick = 0;
-	uint8_t fan, heat;
-	uint32_t ticks = RTC_Read();
+  static ReflowMode_t oldmode = REFLOW_INITIAL;
+  static uint32_t lasttick    = 0;
+  uint8_t fan, heat;
+  uint32_t ticks = RTC_Read();
 
-	Sensor_DoConversion();
-	avgtemp = Sensor_GetTemp(TC_AVERAGE);
+  Sensor_DoConversion();
+  avgtemp = Sensor_GetTemp(TC_AVERAGE);
 
-	const char* modestr = "UNKNOWN";
+  const char* modestr = "UNKNOWN";
 
-	// Depending on mode we should run this with different parameters
-	if (mymode == REFLOW_STANDBY || mymode == REFLOW_STANDBYFAN) {
-		intsetpoint = STANDBYTEMP;
-		// Cool to standby temp but don't heat to get there
-		Reflow_Run(0, avgtemp, &heat, &fan, intsetpoint);
-		heat = 0;
+  // Depending on mode we should run this with different parameters
+  if(mymode == REFLOW_STANDBY || mymode == REFLOW_STANDBYFAN) {
+    intsetpoint = STANDBYTEMP;
+    // Cool to standby temp but don't heat to get there
+    Reflow_RunManual(avgtemp, &heat, &fan, intsetpoint);
+    heat = 0;
 
-		// Suppress slow-running fan in standby
-		if (mymode == REFLOW_STANDBY && avgtemp < (float)STANDBYTEMP) {
-			 fan = 0;
-		}
-		modestr = "STANDBY";
+    // Suppress slow-running fan in standby
+    if(mymode == REFLOW_STANDBY && avgtemp < (float)STANDBYTEMP) {
+      fan = 0;
+    }
+    modestr = "STANDBY";
 
-	} else if(mymode == REFLOW_BAKE) {
-		reflowdone = Reflow_Run(0, avgtemp, &heat, &fan, intsetpoint) ? 1 : 0;
-		modestr = "BAKE";
+  } else if(mymode == REFLOW_BAKE) {
+    reflowdone = Reflow_RunManual(avgtemp, &heat, &fan, intsetpoint);
+    modestr    = "BAKE";
 
-	} else if(mymode == REFLOW_REFLOW) {
-		reflowdone = Reflow_Run(ticks, avgtemp, &heat, &fan, 0) ? 1 : 0;
-		modestr = "REFLOW";
+  } else if(mymode == REFLOW_REFLOW) {
+    reflowdone = Reflow_RunProfile(ticks, avgtemp, &heat, &fan);
+    modestr    = "REFLOW";
 
-	} else {
-		heat = fan = 0;
-	}
-	Set_Heater(heat);
-	Set_Fan(fan);
+  } else {
+    heat = fan = 0;
+  }
+  Set_Heater(heat);
+  Set_Fan(fan);
 
-	if (mymode != oldmode) {
-		printf("\n# Time,  Temp0, Temp1, Temp2, Temp3,  Set,Actual, Heat, Fan,  ColdJ, Mode");
-		oldmode = mymode;
-		numticks = 0;
-	} else if (mymode == REFLOW_BAKE) {
-		if (bake_timer > 0 && numticks >= bake_timer) {
-			printf("\n DONE baking, set bake timer to 0.");
-			bake_timer = 0;
-			Reflow_SetMode(REFLOW_STANDBY);
-		}
+  if(mymode != oldmode) {
+    printf("\n# Time,  Temp0, Temp1, Temp2, Temp3,  Set,Actual, Heat, Fan,  "
+           "ColdJ, Mode");
+    oldmode  = mymode;
+    numticks = 0;
+  } else if(mymode == REFLOW_BAKE) {
+    if(bake_timer > 0 && numticks >= bake_timer) {
+      printf("\n DONE baking, set bake timer to 0.");
+      bake_timer = 0;
+      Reflow_SetMode(REFLOW_STANDBY);
+    }
 
-		// start increasing ticks after setpoint is reached...
-		if (avgtemp < intsetpoint && bake_timer > 0) {
-			modestr = "BAKE-PREHEAT";
-		} else {
-			numticks++;
-		}
-	} else if (mymode == REFLOW_REFLOW) {
-		numticks++;
-	}
+    // start increasing ticks after setpoint is reached...
+    if(avgtemp < intsetpoint && bake_timer > 0) {
+      modestr = "BAKE-PREHEAT";
+    } else {
+      numticks++;
+    }
+  } else if(mymode == REFLOW_REFLOW) {
+    numticks++;
+  }
 
-	if (!(mymode == REFLOW_STANDBY && standby_logging == 0)) {
-		printf("\n%6.1f,  %5.1f, %5.1f, %5.1f, %5.1f,  %3u, %5.1f,  %3u, %3u,  %5.1f, %s",
-		       ((float)numticks / TICKS_PER_SECOND),
-		       Sensor_GetTemp(TC_LEFT),
-		       Sensor_GetTemp(TC_RIGHT),
-		       Sensor_GetTemp(TC_EXTRA1),
-		       Sensor_GetTemp(TC_EXTRA2),
-		       intsetpoint, avgtemp,
-		       heat, fan,
-		       Sensor_GetTemp(TC_COLD_JUNCTION),
-		       modestr);
-	}
+  if(!(mymode == REFLOW_STANDBY && standby_logging == 0)) {
+    printf("\n%6.1f,  %5.1f, %5.1f, %5.1f, %5.1f,  %3u, %5.1f,  %3u, %3u,  "
+           "%5.1f, %s",
+           ((float)numticks / TICKS_PER_SECOND), Sensor_GetTemp(TC_LEFT),
+           Sensor_GetTemp(TC_RIGHT), Sensor_GetTemp(TC_EXTRA1),
+           Sensor_GetTemp(TC_EXTRA2), intsetpoint, avgtemp, heat, fan,
+           Sensor_GetTemp(TC_COLD_JUNCTION), modestr);
+  }
 
-	if (numticks & 1) {
-		// Force UI refresh every other cycle
-		Sched_SetState(MAIN_WORK, 2, 0);
-	}
+  if(numticks & 1) {
+    // Force UI refresh every other cycle
+    Sched_SetState(MAIN_WORK, 2, 0);
+  }
 
-	uint32_t thistick = Sched_GetTick();
-	if (lasttick == 0) {
-		lasttick = thistick - TICKS_MS(PID_TIMEBASE);
-	}
+  uint32_t thistick = Sched_GetTick();
+  if(lasttick == 0) {
+    lasttick = thistick - TICKS_MS(PID_TIMEBASE);
+  }
 
-	int32_t nexttick = (2 * TICKS_MS(PID_TIMEBASE)) - (thistick - lasttick);
-	if ((thistick - lasttick) > (2 * TICKS_MS(PID_TIMEBASE))) {
-		printf("\nReflow can't keep up with desired PID_TIMEBASE!");
-		nexttick = 0;
-	}
-	lasttick += TICKS_MS(PID_TIMEBASE);
-	return nexttick;
+  int32_t nexttick = (2 * TICKS_MS(PID_TIMEBASE)) - (thistick - lasttick);
+  if((thistick - lasttick) > (2 * TICKS_MS(PID_TIMEBASE))) {
+    printf("\nReflow can't keep up with desired PID_TIMEBASE!");
+    nexttick = 0;
+  }
+  lasttick += TICKS_MS(PID_TIMEBASE);
+  return nexttick;
 }
 
 void Reflow_Init(void) {
-	Sched_SetWorkfunc(REFLOW_WORK, Reflow_Work);
-	//PID_init(&PID, 10, 0.04, 5, PID_Direction_Direct); // This does not reach the setpoint fast enough
-	//PID_init(&PID, 30, 0.2, 5, PID_Direction_Direct); // This reaches the setpoint but oscillates a bit especially during cooling
-	//PID_init(&PID, 30, 0.2, 15, PID_Direction_Direct); // This overshoots the setpoint
-	//PID_init(&PID, 25, 0.15, 15, PID_Direction_Direct); // This overshoots the setpoint slightly
-	//PID_init(&PID, 20, 0.07, 25, PID_Direction_Direct);
-	//PID_init(&PID, 20, 0.04, 25, PID_Direction_Direct); // Improvement as far as I can tell, still work in progress
-	PID_init(&PID, 0, 0, 0, PID_Direction_Direct); // Can't supply tuning to PID_Init when not using the default timebase
-	PID_SetSampleTime(&PID, PID_TIMEBASE);
-	PID_SetTunings(&PID, 20, 0.016, 62.5); // Adjusted values to compensate for the incorrect timebase earlier
-	//PID_SetTunings(&PID, 80, 0, 0); // This results in oscillations with 14.5s cycle time
-	//PID_SetTunings(&PID, 30, 0, 0); // This results in oscillations with 14.5s cycle time
-	//PID_SetTunings(&PID, 15, 0, 0);
-	//PID_SetTunings(&PID, 10, 0, 0); // no oscillations, but offset
-	//PID_SetTunings(&PID, 10, 0.020, 0); // getting there
-	//PID_SetTunings(&PID, 10, 0.013, 0);
-	//PID_SetTunings(&PID, 10, 0.0066, 0);
-	//PID_SetTunings(&PID, 10, 0.2, 0);
-	//PID_SetTunings(&PID, 10, 0.020, 1.0); // Experimental
+  Sched_SetWorkfunc(REFLOW_WORK, Reflow_Work);
+  // PID_init(&PID, 10, 0.04, 5, PID_Direction_Direct); // This does not reach
+  // the setpoint fast enough PID_init(&PID, 30, 0.2, 5, PID_Direction_Direct);
+  // // This reaches the setpoint but oscillates a bit especially during cooling
+  // PID_init(&PID, 30, 0.2, 15, PID_Direction_Direct); // This overshoots the
+  // setpoint PID_init(&PID, 25, 0.15, 15, PID_Direction_Direct); // This
+  // overshoots the setpoint slightly PID_init(&PID, 20, 0.07, 25,
+  // PID_Direction_Direct); PID_init(&PID, 20, 0.04, 25, PID_Direction_Direct);
+  // // Improvement as far as I can tell, still work in progress
+  //  Can't supply tuning to PID_Init when not using the default timebase
+  PID_init(&PID, 0, 0, 0);
+  PID_SetSampleTime(&PID, PID_TIMEBASE);
+  // Adjusted values to compensate for the incorrect timebase earlier
+  PID_SetTunings(&PID, 20, 0.016, 62.5);
+  // PID_SetTunings(&PID, 80, 0, 0); // This results in oscillations with 14.5s
+  // cycle time PID_SetTunings(&PID, 30, 0, 0); // This results in oscillations
+  // with 14.5s cycle time PID_SetTunings(&PID, 15, 0, 0); PID_SetTunings(&PID,
+  // 10, 0, 0); // no oscillations, but offset PID_SetTunings(&PID, 10, 0.020,
+  // 0); // getting there PID_SetTunings(&PID, 10, 0.013, 0);
+  // PID_SetTunings(&PID, 10, 0.0066, 0);
+  // PID_SetTunings(&PID, 10, 0.2, 0);
+  // PID_SetTunings(&PID, 10, 0.020, 1.0); // Experimental
 
-	Reflow_LoadCustomProfiles();
+  Reflow_LoadCustomProfiles();
 
-	Reflow_ValidateNV();
-	Sensor_ValidateNV();
+  Reflow_ValidateNV();
+  Sensor_ValidateNV();
 
-	Reflow_LoadSetpoint();
+  Reflow_LoadSetpoint();
 
-	PID.mySetpoint = (float)SETPOINT_DEFAULT;
-	PID_SetOutputLimits(&PID, 0, 255 + 248);
-	PID_SetMode(&PID, PID_Mode_Manual);
-	PID.myOutput = 248; // Between fan and heat
-	PID_SetMode(&PID, PID_Mode_Automatic);
-	RTC_Zero();
+  PID_SetOutputLimits(&PID, -255, 255);
+  PID_SetMode(&PID, PID_Mode_Manual);
+  PID_SetMode(&PID, PID_Mode_Automatic);
+  RTC_Zero();
 
-	// Start work
-	Sched_SetState(REFLOW_WORK, 2, 0);
+  // Start work
+  Sched_SetState(REFLOW_WORK, 2, 0);
 }
 
 void Reflow_SetMode(ReflowMode_t themode) {
@@ -229,76 +237,91 @@ int Reflow_IsPreheating(void) {
 }
 
 int Reflow_GetTimeLeft(void) {
-	if (bake_timer == 0) {
-		return -1;
-	}
-	return (bake_timer - numticks) / TICKS_PER_SECOND;
+  if(bake_timer == 0) {
+    return -1;
+  }
+  return (bake_timer - numticks) / TICKS_PER_SECOND;
+}
+
+void Reflow_setOuput(int16_t out, uint8_t* pheat, uint8_t* pfan) {
+  if(out > 0) {
+    *pheat = out;
+    pfan   = NV_GetConfig(REFLOW_MIN_FAN_SPEED);
+  } else {
+    *pheat = 0;
+    *pfan  = -out;
+  }
+}
+
+bool Reflow_RunManual(float meastemp,
+                      uint8_t* pheat,
+                      uint8_t* pfan,
+                      int32_t setpoint) {
+  Reflow_setOuput(PID_Compute(&PID, setpoint, meastemp), pheat, pfan);
+  if(bake_timer > 0 &&
+     (Reflow_GetTimeLeft() == 0 || Reflow_GetTimeLeft() == -1)) {
+    return true;
+  }
+  return false;
 }
 
 // returns -1 if the reflow process is done.
-int32_t Reflow_Run(uint32_t thetime, float meastemp, uint8_t* pheat, uint8_t* pfan, int32_t manualsetpoint) {
-	int32_t retval = 0;
+bool Reflow_RunProfile(uint32_t thetime,
+                       float meastemp,
+                       uint8_t* pheat,
+                       uint8_t* pfan) {
 
-	if (manualsetpoint) {
-		PID.mySetpoint = (float)manualsetpoint;
+  float target;
 
-		if (bake_timer > 0 && (Reflow_GetTimeLeft() == 0 || Reflow_GetTimeLeft() == -1)) {
-			retval = -1;
-		}
-	} else {
-		// Figure out what setpoint to use from the profile, brute-force way. Fix this.
-		uint8_t idx = thetime / 10;
-		uint16_t start = idx * 10;
-		uint16_t offset = thetime - start;
-		if (idx < (NUMPROFILETEMPS - 2)) {
-			uint16_t value = Reflow_GetSetpointAtIdx(idx);
-			uint16_t value2 = Reflow_GetSetpointAtIdx(idx + 1);
+  // Figure out what setpoint to use from the profile, brute-force way. Fix
+  // this.
+  uint8_t idx     = thetime / 10;
+  uint16_t start  = idx * 10;
+  uint16_t offset = thetime - start;
+  if(idx < (NUMPROFILETEMPS - 2)) {
+    uint16_t valueStartOfSegment = Reflow_GetSetpointAtIdx(idx);
+    uint16_t valueEndOfSegment   = Reflow_GetSetpointAtIdx(idx + 1);
 
-			if (value > 0 && value2 > 0) {
-				uint16_t avg = (value * (10 - offset) + value2 * offset) / 10;
+    if(valueStartOfSegment > 0 && valueEndOfSegment > 0) {
+      uint16_t interpolated =
+          (valueStartOfSegment * (10 - offset) + valueEndOfSegment * offset) /
+          10;
 
-				// Keep the setpoint for the UI...
-				intsetpoint = avg;
-				if (value2 > avg) {
-					// Temperature is rising,
-					// using the future value for PID regulation produces better result when heating
-					PID.mySetpoint = (float)value2;
-				} else {
-					// Use the interpolated value when cooling
-					PID.mySetpoint = (float)avg;
-				}
-			} else {
-				retval = -1;
-			}
-		} else {
-			retval = -1;
-		}
-	}
+      // Keep the interpolated setpoint for the UI...
+      intsetpoint = interpolated;
+      if(valueEndOfSegment > interpolated) {
+        // Temperature is rising,
+        // using the future value for PID regulation produces better result
+        // when heating
+        target = (float)valueEndOfSegment;
+      } else {
+        // Use the interpolated value when cooling
+        target = (float)interpolated;
+      }
+    } else { // we reach the end of the segments
 
-	if (!manualsetpoint) {
-		// Plot actual temperature on top of desired profile
-		int realx = (thetime / 5) + XAXIS;
-		int y = (uint16_t)(meastemp * 0.2f);
-		y = YAXIS - y;
-		LCD_SetPixel(realx, y);
-	}
+      // we expect here to be cooling, just ensure we are not heating for
+      // whatsoever reason;
+      *pheat = 0;
 
-	PID.myInput = meastemp;
-	PID_Compute(&PID);
-	uint32_t out = PID.myOutput;
-	if (out < 248) { // Fan in reverse
-		*pfan = 255 - out;
-		*pheat = 0;
-	} else {
-		*pheat = out - 248;
+      return true;
+    }
+  } else { // no more segment in profile
 
-		// When heating like crazy make sure we can reach our setpoint
-		// if(*pheat>192) { *pfan=2; } else { *pfan=2; }
+    // same as above, we ensure we are not heating for any reason.
+    *pheat = 0;
+    return true;
+  }
 
-		// Run at a low fixed speed during heating for now
-		*pfan = NV_GetConfig(REFLOW_MIN_FAN_SPEED);
-	}
-	return retval;
+  // Plot actual temperature on top of desired profile
+  int realx = (thetime / 5) + XAXIS;
+  int y     = (uint16_t)(meastemp * 0.2f);
+  y         = YAXIS - y;
+  LCD_SetPixel(realx, y);
+
+  Reflow_setOuput(PID_Compute(&PID, target, meastemp), pheat, pfan);
+
+  return false;
 }
 
 void Reflow_ToggleStandbyLogging(void) {
