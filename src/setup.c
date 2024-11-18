@@ -17,69 +17,78 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <stdio.h>
+#include "setup.h"
 #include "nvstorage.h"
 #include "reflow_profiles.h"
-#include "setup.h"
+#include <stdint.h>
+#include <stdio.h>
 
 static setupMenuStruct setupmenu[] = {
-	{"Min fan speed    %4.0f", REFLOW_MIN_FAN_SPEED, 0, 254, 0, 1.0f},
-	{"Cycle done beep %4.1fs", REFLOW_BEEP_DONE_LEN, 0, 254, 0, 0.1f},
-	{"Left TC gain     %1.2f", TC_LEFT_GAIN, 10, 190, 0, 0.01f},
-	{"Left TC offset  %+1.2f", TC_LEFT_OFFSET, 0, 200, -100, 0.25f},
-	{"Right TC gain    %1.2f", TC_RIGHT_GAIN, 10, 190, 0, 0.01f},
-	{"Right TC offset %+1.2f", TC_RIGHT_OFFSET, 0, 200, -100, 0.25f},
+    {"Min fan speed    %4.0f", REFLOW_MIN_FAN_SPEED, 0, 254, 0, 1.0f, false},
+    {"Cycle done beep %4.1fs", REFLOW_BEEP_DONE_LEN, 0, 254, 0, 0.1f, false},
+    {"Left TC gain     %1.2f", TC_LEFT_GAIN, 10, 190, 0, 0.01f, false},
+    {"Left TC offset  %+1.2f", TC_LEFT_OFFSET, 0, 200, -100, 0.25f, false},
+    {"Right TC gain    %1.2f", TC_RIGHT_GAIN, 10, 190, 0, 0.01f, false},
+    {"Right TC offset %+1.2f", TC_RIGHT_OFFSET, 0, 200, -100, 0.25f, false},
+    {"PID K Constant %+1.2f", PID_K_VALUE_H, 0, 10000, 0, 0.1f, true},
+    {"PID I Constant %+1.3f", PID_I_VALUE_H, 0, 1000, 0, 0.001f, true},
+    {"PID D Constant %+1.2f", PID_D_VALUE_H, 0, 10000, 0, 0.1f, true},
 };
 #define NUM_SETUP_ITEMS (sizeof(setupmenu) / sizeof(setupmenu[0]))
 
-int Setup_getNumItems(void) {
-	return NUM_SETUP_ITEMS;
-}
+int Setup_getNumItems(void) { return NUM_SETUP_ITEMS; }
 
 int _getRawValue(int item) {
-	return NV_GetConfig(setupmenu[item].nvval);
+  if(setupmenu[item].word) {
+    return NV_GetWord(setupmenu[item].nvval);
+  }
+  return NV_GetConfig(setupmenu[item].nvval);
 }
 
 float Setup_getValue(int item) {
-	int intval = _getRawValue(item);
-	intval += setupmenu[item].offset;
-	return ((float)intval) * setupmenu[item].multiplier;
+  int intval = _getRawValue(item);
+  intval += setupmenu[item].offset;
+  return ((float)intval) * setupmenu[item].multiplier;
 }
 
-void Setup_setValue(int item, int value) {
-	NV_SetConfig(setupmenu[item].nvval, value);
-	Reflow_ValidateNV();
+void _setRawValue(int item, int value) {
+  if(setupmenu[item].word) {
+    NV_PutWord(setupmenu[item].nvval, value);
+  } else {
+    NV_SetConfig(setupmenu[item].nvval, value);
+  }
 }
 
 void Setup_setRealValue(int item, float value) {
-	int intval = (int)(value / setupmenu[item].multiplier);
-	intval -= setupmenu[item].offset;
-	Setup_setValue(item, intval);
+  int intval = (int)(value / setupmenu[item].multiplier);
+  intval -= setupmenu[item].offset;
+  _setRawValue(item, intval);
 }
 
 void Setup_increaseValue(int item, int amount) {
-	int curval = _getRawValue(item) + amount;
+  int curval = _getRawValue(item) + amount;
 
-	int maxval = setupmenu[item].maxval;
-	if (curval > maxval) curval = maxval;
+  int maxval = setupmenu[item].maxval;
+  if(curval > maxval)
+    curval = maxval;
 
-	Setup_setValue(item, curval);
+  _setRawValue(item, curval);
 }
 
 void Setup_decreaseValue(int item, int amount) {
-	int curval = _getRawValue(item) - amount;
+  int curval = _getRawValue(item) - amount;
 
-	int minval = setupmenu[item].minval;
-	if (curval < minval) curval = minval;
+  int minval = setupmenu[item].minval;
+  if(curval < minval)
+    curval = minval;
 
-	Setup_setValue(item, curval);
+  _setRawValue(item, curval);
 }
 
 void Setup_printFormattedValue(int item) {
-	printf(setupmenu[item].formatstr, Setup_getValue(item));
+  printf(setupmenu[item].formatstr, Setup_getValue(item));
 }
 
 int Setup_snprintFormattedValue(char* buf, int n, int item) {
-	return snprintf(buf, n, setupmenu[item].formatstr, Setup_getValue(item));
+  return snprintf(buf, n, setupmenu[item].formatstr, Setup_getValue(item));
 }

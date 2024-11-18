@@ -35,8 +35,8 @@ uint8_t NV_GetConfig(NVItem_t item);
 
 void NV_SetConfig(NVItem_t item, uint8_t value);
 
-float NV_GetFloatConfig(NVItem_t item, uint16_t denum);
-void NV_SetFloatConfig(NVItem_t item, float num, uint16_t denum);
+uint16_t NV_GetWord(NVItem_t item);
+void NV_PutWord(NVItem_t item, uint16_t value);
 
 int32_t NV_Work(void);
 

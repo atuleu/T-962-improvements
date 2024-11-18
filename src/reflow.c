@@ -27,6 +27,7 @@
 #include "rtc.h"
 #include "sched.h"
 #include "sensor.h"
+#include "setup.h"
 #include "t962.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -184,9 +185,8 @@ void Reflow_Init(void) {
   PID_init(&PID, 0, 0, 0);
   PID_SetSampleTime(&PID, PID_TIMEBASE);
   // Adjusted values to compensate for the incorrect timebase earlier
-  PID_SetTunings(&PID, NV_GetFloatConfig(PID_K_VALUE_H, PID_K_DENUM),
-                 NV_GetFloatConfig(PID_I_VALUE_H, PID_I_DENUM),
-                 NV_GetFloatConfig(PID_D_VALUE_H, PID_D_DENUM));
+  PID_SetTunings(&PID, Setup_getValue(PID_K_VALUE_H),
+                 Setup_getValue(PID_I_VALUE_H), Setup_getValue(PID_D_VALUE_H));
 
   RTC_Zero();
 

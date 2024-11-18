@@ -134,17 +134,17 @@ void Reflow_ValidateNV(void) {
 
   if(NV_GetConfig(PID_K_VALUE_H) == 0xff &&
      NV_GetConfig(PID_K_VALUE_L) == 0xff) {
-    NV_SetFloatConfig(PID_K_VALUE_H, 20.0, PID_K_DENUM);
+    NV_PutWord(PID_K_VALUE_H, 200);
   }
 
   if(NV_GetConfig(PID_I_VALUE_H) == 0xff &&
      NV_GetConfig(PID_I_VALUE_L) == 0xff) {
-    NV_SetFloatConfig(PID_I_VALUE_H, 0.016, PID_I_DENUM);
+    NV_PutWord(PID_I_VALUE_H, 16);
   }
 
   if(NV_GetConfig(PID_D_VALUE_H) == 0xff &&
      NV_GetConfig(PID_D_VALUE_L) == 0xff) {
-    NV_SetFloatConfig(PID_D_VALUE_H, 62.5, PID_D_DENUM);
+    NV_PutWord(PID_D_VALUE_H, 625);
   }
 
   Reflow_SelectProfileIdx(NV_GetConfig(REFLOW_PROFILE));
