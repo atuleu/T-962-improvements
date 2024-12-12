@@ -77,6 +77,7 @@ static char* help_text =
     " select profile <id>     Select reflow profile by id\n"
     " stop                    Exit reflow or bake mode\n"
     " values                  Dump currently measured values\n"
+    " PID autotune <t> <k>    Runs PID autotuning procedure\n"
     "\n";
 
 static int32_t Main_Work(void);
