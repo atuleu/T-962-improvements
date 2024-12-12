@@ -796,6 +796,20 @@ void ProcessUART(MainData_t* data) {
 }
 
 void Main_Autotune(MainData_t* data) {
+  uint32_t ticks = RTC_Read();
+
+  len = snprintf(buf, sizeof(buf), "%.2f", Reflow_Autotune_GetKp());
+  LCD_disp_str((uint8_t*)"Kp ", 3, 110, 7, FONT6X6);
+  LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
+
+  len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetActualTemp());
+  LCD_disp_str((uint8_t*)"ACT", 3, 110, 20, FONT6X6);
+  LCD_disp_str((uint8_t*)buf, len, 110, 26, FONT6X6);
+
+  len = snprintf(buf, sizeof(buf), "%03u", (unsigned int)ticks);
+  LCD_disp_str((uint8_t*)"RUN", 3, 110, 33, FONT6X6);
+  LCD_disp_str((uint8_t*)buf, len, 110, 39, FONT6X6);
+
   if(Reflow_IsDone() || data->keyspressed & KEY_S) {
     printf("\nAutotune %s\n",
            (Reflow_IsDone() ? "done" : "interrupted by keypress"));

@@ -32,5 +32,5 @@ void Reflow_SetBakeTimer(int seconds);
 int Reflow_GetTimeLeft(void);
 void Reflow_ToggleStandbyLogging(void);
 void Reflow_StartAutotune(float Kstart, uint16_t setpoint);
-
+float Reflow_Autotune_GetKp();
 #endif /* REFLOW_H_ */

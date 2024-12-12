@@ -402,6 +402,8 @@ void plotTemperature(uint32_t tick, float temp) {
   LCD_SetPixel(realx, y);
 }
 
+float Reflow_Autotune_GetKp() { return at_data.KNext; }
+
 bool Reflow_RunAutotune(float meastemp,
                         uint8_t* pheat,
                         uint8_t* pfan,
