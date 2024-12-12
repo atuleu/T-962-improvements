@@ -685,7 +685,7 @@ void ProcessUART(MainData_t* data) {
   char* cmd_bake           = "bake %d %d";
   char* cmd_dump_profile   = "dump profile %d";
   char* cmd_setting        = "setting %d %f";
-  char* cmd_autotune       = "PID autotune %d %d";
+  char* cmd_autotune       = "PID autotune %d %f";
 
   if(uart_isrxready()) {
     int len = uart_readline(serial_cmd, 255);
@@ -784,12 +784,27 @@ void ProcessUART(MainData_t* data) {
         Setup_setRealValue(param, paramF);
         printf("\nAdjusted setting: ");
         Setup_printFormattedValue(param);
-
-      } else {
-        printf("\nCannot understand command, ? for help\n");
+      } else if(sscanf(serial_cmd, cmd_autotune, &param, &paramF) > 0) {
+        Reflow_Init();
+        Reflow_StartAutotune(paramF, param);
+        data->mode = MAIN_AUTOTUNE;
       }
+    } else {
+      printf("\nCannot understand command, ? for help\n");
     }
   }
 }
 
-void Main_Autotune(MainData_t* data) {}
+void Main_Autotune(MainData_t* data) {
+  if(Reflow_IsDone() || data->keyspressed & KEY_S) {
+    printf("\nAutotune %s\n",
+           (Reflow_IsDone() ? "done" : "interrupted by keypress"));
+    if(Reflow_IsDone()) {
+      Buzzer_Beep(BUZZ_1KHZ, 255,
+                  TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
+    }
+    data->mode = MAIN_HOME;
+    Reflow_SetMode(REFLOW_STANDBY);
+    data->retval = 0; // Force immediate refresh
+  }
+}

@@ -9,7 +9,8 @@ typedef enum eReflowMode
   REFLOW_STANDBY,
   REFLOW_BAKE,
   REFLOW_REFLOW,
-  REFLOW_STANDBYFAN
+  REFLOW_STANDBYFAN,
+  REFLOW_AUTOTUNE,
 } ReflowMode_t;
 
 #define SETPOINT_MIN (30)
@@ -30,5 +31,6 @@ uint16_t Reflow_GetSetpoint(void);
 void Reflow_SetBakeTimer(int seconds);
 int Reflow_GetTimeLeft(void);
 void Reflow_ToggleStandbyLogging(void);
+void Reflow_StartAutotune(float Kstart, uint16_t setpoint);
 
 #endif /* REFLOW_H_ */

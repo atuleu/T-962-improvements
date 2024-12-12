@@ -22,6 +22,7 @@
 #include "PID_v1.h"
 #include "io.h"
 #include "lcd.h"
+#include "math.h"
 #include "nvstorage.h"
 #include "reflow_profiles.h"
 #include "rtc.h"
@@ -63,6 +64,11 @@ bool Reflow_RunManual(float meastemp,
                       uint8_t* pfan,
                       int32_t setpoint);
 
+bool Reflow_RunAutotune(float meastemp,
+                        uint8_t* pheat,
+                        uint8_t* pfan,
+                        int32_t setpoint);
+
 static int32_t Reflow_Work(void) {
   static ReflowMode_t oldmode = REFLOW_INITIAL;
   static uint32_t lasttick    = 0;
@@ -95,6 +101,9 @@ static int32_t Reflow_Work(void) {
     reflowdone = Reflow_RunProfile(ticks, avgtemp, &heat, &fan);
     modestr    = "REFLOW";
 
+  } else if(mymode == REFLOW_AUTOTUNE) {
+    reflowdone = Reflow_RunAutotune(avgtemp, &heat, &fan, intsetpoint);
+    modestr    = "AUTOTUNE";
   } else {
     heat = fan = 0;
   }
@@ -153,15 +162,26 @@ static int32_t Reflow_Work(void) {
 
 void Reflow_Init(void) {
   Sched_SetWorkfunc(REFLOW_WORK, Reflow_Work);
-  // PID_init(&PID, 10, 0.04, 5, PID_Direction_Direct); // This does not reach
-  // the setpoint fast enough PID_init(&PID, 30, 0.2, 5, PID_Direction_Direct);
-  // // This reaches the setpoint but oscillates a bit especially during cooling
-  // PID_init(&PID, 30, 0.2, 15, PID_Direction_Direct); // This overshoots the
-  // setpoint PID_init(&PID, 25, 0.15, 15, PID_Direction_Direct); // This
-  // overshoots the setpoint slightly PID_init(&PID, 20, 0.07, 25,
-  // PID_Direction_Direct); PID_init(&PID, 20, 0.04, 25, PID_Direction_Direct);
-  // // Improvement as far as I can tell, still work in progress
+
+  // This does not reach the setpoint fast enough
+  // PID_init(&PID, 10, 0.04, 5, PID_Direction_Direct);
+
+  // This reaches the setpoint but oscillates a bit especially during cooling
+  // PID_init(&PID, 30, 0.2, 5, PID_Direction_Direct);
+
+  // This overshoots the setpoint
+  // PID_init(&PID, 30, 0.2, 15, PID_Direction_Direct);
+
+  // This
+  // overshoots the setpoint slightly
+  // PID_init(&PID, 25, 0.15, 15, PID_Direction_Direct);
+
+  // PID_init(&PID, 20, 0.07, 25, PID_Direction_Direct);
+
+  // PID_init(&PID, 20, 0.04, 25, PID_Direction_Direct);
+  // Improvement as far as I can tell, still work in progress
   //  Can't supply tuning to PID_Init when not using the default timebase
+
   // PID_SetTunings(&PID, 80, 0, 0); // This results in oscillations with 14.5s
   // cycle time PID_SetTunings(&PID, 30, 0, 0); // This results in oscillations
   // with 14.5s cycle time PID_SetTunings(&PID, 15, 0, 0); PID_SetTunings(&PID,
@@ -195,11 +215,11 @@ void Reflow_Init(void) {
 }
 
 void Reflow_SetMode(ReflowMode_t themode) {
-	mymode = themode;
-	// reset reflowdone if mode is set to standby.
-	if (themode == REFLOW_STANDBY)  {
-		reflowdone = 0;
-	}
+  mymode = themode;
+  // reset reflowdone if mode is set to standby.
+  if(themode == REFLOW_STANDBY) {
+    reflowdone = false;
+  }
 }
 
 void Reflow_SetSetpoint(uint16_t thesetpoint) {
@@ -328,6 +348,154 @@ bool Reflow_RunProfile(uint32_t thetime,
   return false;
 }
 
-void Reflow_ToggleStandbyLogging(void) {
-	standby_logging = !standby_logging;
+void Reflow_ToggleStandbyLogging(void) { standby_logging = !standby_logging; }
+
+#define AT_CYCLES 8
+typedef enum
+{
+  AT_COOLDONW   = 0,
+  AT_RUN_CYCLES = 1
+} AT_State_t;
+
+typedef struct {
+  float extremums[2 * AT_CYCLES];
+  uint32_t times[2 * AT_CYCLES];
+  float last;
+  uint8_t nextIdx;
+  uint32_t numTick;
+  float Kmin;
+  float Kmax;
+  float KNext;
+  AT_State_t State;
+} Autotune_t;
+
+static Autotune_t at_data;
+
+void Reflow_StartAutotune(float Kstart, uint16_t setpoint) {
+  reflowdone = false;
+  Reflow_SetSetpoint(setpoint);
+  mymode          = REFLOW_AUTOTUNE;
+  at_data.KNext   = Kstart;
+  at_data.Kmax    = NAN;
+  at_data.Kmax    = NAN;
+  at_data.State   = AT_COOLDONW;
+  at_data.numTick = 0;
+}
+
+bool AT_done() {
+  if(isnan(at_data.Kmax) || isnan(at_data.Kmin)) {
+    return false;
+  }
+  return (at_data.Kmax - at_data.Kmin) / at_data.Kmin <
+         0.05; // 5% relative error;
+}
+
+extern uint8_t graphbmp[];
+
+void plotTemperature(uint32_t tick, float temp) {
+  if(tick % (TICKS_PER_SECOND * 5) != 0) {
+    return;
+  }
+  int realx = tick / (TICKS_PER_SECOND * 5) + XAXIS;
+  int y     = (uint16_t)(temp * 0.2f);
+  y         = YAXIS - y;
+  LCD_SetPixel(realx, y);
+}
+
+bool Reflow_RunAutotune(float meastemp,
+                        uint8_t* pheat,
+                        uint8_t* pfan,
+                        int32_t setpoint) {
+  plotTemperature(at_data.numTick, meastemp);
+  if(at_data.State == AT_COOLDONW) {
+    if(meastemp > STANDBYTEMP) {
+      *pfan = 255;
+      return false;
+    }
+
+    if(AT_done()) {
+      float Tu = 0.0;
+      for(int i = 0; i < AT_CYCLES - 1; i++) {
+        Tu += 0.25 * (at_data.times[2 * (i + 1)] - at_data.times[2 * i]);
+      }
+      Tu /= (AT_CYCLES - 1);
+      printf("\n\nFound Ku: %.3f and Tu= %.3f\n", at_data.KNext, Tu);
+      printf("\n\nPID with small overshoot values : %.3f %.3f %.3f\n",
+             at_data.KNext / 3.0, at_data.KNext * 0.666 / Tu,
+             at_data.KNext * Tu / 9);
+      return true;
+    }
+
+    LCD_FB_Clear();
+    LCD_BMPDisplay(graphbmp, 0, 0);
+
+    at_data.nextIdx = 0;
+    at_data.State   = AT_RUN_CYCLES;
+    PID_SetTunings(&PID, at_data.KNext, 0, 0);
+    PID_SetMode(&PID, PID_Mode_Manual);
+    PID_SetMode(&PID, PID_Mode_Automatic);
+    at_data.last         = meastemp;
+    at_data.extremums[0] = NAN;
+    at_data.numTick      = -1;
+    printf("\nTesting K=%.3f\n\n", at_data.KNext);
+  }
+
+  Reflow_setOuput(PID_Compute(&PID, intsetpoint, meastemp), pheat, pfan);
+  bool newCandidate = false;
+  if(at_data.nextIdx % 2 == 0) {
+    newCandidate = meastemp > at_data.last;
+  } else {
+    newCandidate = meastemp < at_data.last;
+  }
+  at_data.last = meastemp;
+
+  if(newCandidate) {
+    at_data.extremums[at_data.nextIdx] = meastemp;
+    at_data.times[at_data.nextIdx]     = at_data.numTick;
+    // not reached an extrema yet, continue
+    return false;
+  } else if((at_data.times[at_data.nextIdx] - at_data.numTick) >= 10 // 2.5s
+            && isnan(at_data.extremums[at_data.nextIdx]) == false) {
+    at_data.nextIdx++;
+    printf("\n found max at %.1f\n\n", at_data.extremums[at_data.nextIdx - 1]);
+  } else {
+    return false; // no ext found, continue
+  }
+
+  if(at_data.nextIdx < 2 * AT_CYCLES) {
+    at_data.extremums[at_data.nextIdx] = NAN;
+    // still not measured enough cycles, continue
+    return false;
+  }
+
+  float avgStart = 0.0, avgEnd = 0.0;
+  for(int i = 0; i < AT_CYCLES / 2; ++i) {
+    avgStart += fabsf(at_data.extremums[i] - intsetpoint);
+    avgEnd += fabs(at_data.extremums[2 * AT_CYCLES - 1 - i] - intsetpoint);
+  }
+
+  if((avgEnd - avgStart) / avgEnd < -0.01) {
+    // Decreasing -> we set Kmin
+    at_data.Kmin = at_data.KNext;
+    printf("\nDecreasing oscillation\n\n");
+  } else {
+    // Increasing -> we set Kmax
+    printf("\nIncreasing oscillation\n\n");
+    at_data.Kmax = at_data.KNext;
+  }
+
+  if(isnan(at_data.Kmax)) {
+    at_data.KNext = 2 * at_data.Kmin;
+  } else if(isnan(at_data.Kmin)) {
+    at_data.KNext = at_data.Kmax / 2.0;
+  } else {
+    at_data.KNext = at_data.Kmax + at_data.Kmin / 2;
+  }
+
+  // we cooldown
+  at_data.State = AT_COOLDONW;
+  *pheat        = 0;
+  *pfan         = 255;
+
+  return false;
 }
