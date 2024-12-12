@@ -8,11 +8,7 @@
 
 #include "PID_v1.h"
 #include "math.h"
-
-#define MIN(a, b) ((a) > (b) ? (b) : (a))
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define CLAMP(v, low, high) MIN(MAX(v, low), high)
-
+#include "utils.h"
 void PID_Initialize(PidType* pid);
 
 /*Constructor (...)*********************************************************
@@ -51,7 +47,7 @@ FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual) {
   /*Compute all the working error variables*/
   FloatType error = target - actual;
   pid->ITerm += pid->ki * error;
-  pid->ITerm = CLAMP(pid->ITerm, pid->outMin, pid->outMax);
+  pid->ITerm = MATH_CLAMP(pid->ITerm, pid->outMin, pid->outMax);
 
   FloatType dError = isnan(pid->lastError) ? 0.0 : (error - pid->lastError);
 
@@ -60,7 +56,7 @@ FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual) {
   /*Remember some variables for next time*/
   pid->lastError   = error;
 
-  return CLAMP(output, pid->outMin, pid->outMax);
+  return MATH_CLAMP(output, pid->outMin, pid->outMax);
 
   //  } else {
   //    return false;
@@ -116,7 +112,7 @@ void PID_SetOutputLimits(PidType* pid, FloatType Min, FloatType Max) {
   pid->outMax = Max;
 
   if(pid->inAuto) {
-    pid->ITerm = CLAMP(pid->ITerm, Min, Max);
+    pid->ITerm = MATH_CLAMP(pid->ITerm, Min, Max);
   }
 }
 
@@ -138,7 +134,7 @@ void PID_SetMode(PidType* pid, PidModeType Mode) {
  *  from manual to automatic mode.
  ******************************************************************************/
 void PID_Initialize(PidType* pid) {
-  pid->ITerm     = CLAMP(0, pid->outMin, pid->outMax);
+  pid->ITerm     = MATH_CLAMP(0, pid->outMin, pid->outMax);
   pid->lastError = NAN;
 }
 
