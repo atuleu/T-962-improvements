@@ -425,7 +425,7 @@ bool Reflow_RunAutotune(float meastemp,
   plotTemperature(numticks, meastemp);
 
   if(at_data.State == AT_COOLDONW) {
-    if(meastemp > STANDBYTEMP) {
+    if(meastemp > 60) {
       *pfan  = 255;
       *pheat = 0;
       return false;
