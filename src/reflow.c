@@ -449,10 +449,13 @@ bool Reflow_RunAutotune(float meastemp,
   float output = PID_Compute(&PID, intsetpoint, meastemp);
   Reflow_setOuput(output, pheat, pfan);
   bool newCandidate = false;
-  if(at_data.nextIdx % 2 == 0) {
-    newCandidate = meastemp > at_data.last;
-  } else {
-    newCandidate = meastemp < at_data.last;
+  // only found max within 40% of the region.
+  if(fabs(meastemp - intsetpoint) / intsetpoint < 0.4) {
+    if(at_data.nextIdx % 2 == 0) {
+      newCandidate = meastemp > at_data.last;
+    } else {
+      newCandidate = meastemp < at_data.last;
+    }
   }
   at_data.last = meastemp;
 
