@@ -30,6 +30,7 @@
 #include "sensor.h"
 #include "setup.h"
 #include "t962.h"
+#include "utils.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -351,6 +352,14 @@ bool Reflow_RunProfile(uint32_t thetime,
 
 void Reflow_ToggleStandbyLogging(void) { standby_logging = !standby_logging; }
 
+//==============================================================================
+// PID autotune Inspired from marlin controller. Idea comes from "Automatic
+// tuning of simple regulators with specifications on phase and amplitude
+// margins." ( https://doi.org/10.1016/0005-1098(84)90014-1 ). The idea is to
+// use a relay controller and to look for anti-phase oscillation. An euristic is
+// to adjust the amplitude of the relay controller in order to match the Up and
+// down half-period.
+
 #define AT_CYCLES 6
 typedef enum
 {
@@ -359,14 +368,12 @@ typedef enum
 } AT_State_t;
 
 typedef struct {
-  float extremums[2 * AT_CYCLES];
-  uint32_t times[2 * AT_CYCLES];
-  float last;
-  uint8_t nextIdx;
-  float Kmin;
-  float Kmax;
-  float KNext;
-  AT_State_t State;
+  float max, min;
+  int32_t amplitude;
+  int32_t bias;
+  uint8_t Cycles, iter;
+  bool rampUp;
+  uint32_t t_down, t_up, t_last;
 } Autotune_t;
 
 static Autotune_t at_data;
@@ -374,32 +381,33 @@ static Autotune_t at_data;
 extern uint8_t graphbmp[];
 extern uint8_t stopbmp[];
 
-void Reflow_lcdStatus(char* msg, int len) {
-  LCD_disp_str((uint8_t*)msg, len, 13, 0, FONT6X6);
-}
+static char buf[22];
+static int len;
 
-void Reflow_StartAutotune(float Kstart, uint16_t setpoint) {
-  reflowdone = false;
-  Reflow_SetSetpoint(setpoint);
-  mymode        = REFLOW_AUTOTUNE;
-  at_data.KNext = Kstart;
-  at_data.Kmax  = NAN;
-  at_data.Kmax  = NAN;
-  at_data.State = AT_COOLDONW;
-  numticks      = 0;
+void Reflow_lcdStatus(char* msg, int len) {}
+
+void Reflow_StartAutotune(uint16_t setpoint, uint8_t cycles) {
+  reflowdone        = false;
+  intsetpoint       = setpoint; // do not save it to eeprom
+  mymode            = REFLOW_AUTOTUNE;
+  at_data.max       = 0.0;
+  at_data.min       = 1000.0;
+  at_data.Cycles    = cycles;
+  at_data.iter      = 0;
+  at_data.rampUp    = true;
+  at_data.t_down    = 0;
+  at_data.t_up      = 0;
+  at_data.t_last    = 0;
+  at_data.amplitude = 510;
+  at_data.bias      = 0;
+  numticks          = 0;
 
   LCD_FB_Clear();
   LCD_BMPDisplay(graphbmp, 0, 0);
   LCD_BMPDisplay(stopbmp, 127 - 17, 0);
-  Reflow_lcdStatus("Cooling down", 12);
-}
-
-bool AT_done() {
-  if(isnan(at_data.Kmax) || isnan(at_data.Kmin)) {
-    return false;
-  }
-  return (at_data.Kmax - at_data.Kmin) / at_data.Kmin <
-         0.05; // 5% relative error;
+  len = snprintf(buf, sizeof(buf), "Heating [%d/%d]", at_data.iter + 1,
+                 at_data.Cycles);
+  LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
 }
 
 void plotTemperature(uint32_t tick, float temp) {
@@ -412,48 +420,7 @@ void plotTemperature(uint32_t tick, float temp) {
   LCD_SetPixel(realx, y);
 }
 
-float Reflow_Autotune_GetKp() { return at_data.KNext; }
-
-static char buf[22];
-static int len;
-
-#define AT_TICK_LIMITS 300 * TICKS_PER_SECOND
-
-void Reflow_MeasureAutotune() {
-  bool decreasing = true;
-  if(numticks < AT_TICK_LIMITS) {
-
-    float avgStart = 0.0, avgEnd = 0.0;
-    for(int i = 1; i < AT_CYCLES / 3; ++i) {
-      avgStart += fabsf(at_data.extremums[i] - intsetpoint);
-      avgEnd += fabs(at_data.extremums[2 * AT_CYCLES - 1 - i] - intsetpoint);
-    }
-
-    if((avgEnd - avgStart) / avgEnd < -0.01) {
-      decreasing = true;
-    } else {
-      decreasing = false;
-    }
-  }
-
-  if(decreasing) {
-    // Decreasing -> we set Kmin
-    at_data.Kmin = at_data.KNext;
-    printf("\nDecreasing oscillation\n");
-  } else {
-    // Increasing -> we set Kmax
-    printf("\nIncreasing oscillation\n");
-    at_data.Kmax = at_data.KNext;
-  }
-
-  if(isnan(at_data.Kmax)) {
-    at_data.KNext = 2 * at_data.Kmin;
-  } else if(isnan(at_data.Kmin)) {
-    at_data.KNext = at_data.Kmax / 2.0;
-  } else {
-    at_data.KNext = at_data.Kmax + at_data.Kmin / 2;
-  }
-}
+#define MIN_ON_TIME 5 * TICKS_PER_SECOND
 
 bool Reflow_RunAutotune(float meastemp,
                         uint8_t* pheat,
@@ -462,94 +429,71 @@ bool Reflow_RunAutotune(float meastemp,
   numticks += 1;
   plotTemperature(numticks, meastemp);
 
-  if(at_data.State == AT_COOLDONW) {
-    if(meastemp > 60) {
-      *pfan  = 255;
-      *pheat = 0;
+  at_data.max = MATH_MAX(at_data.max, meastemp);
+  at_data.min = MATH_MIN(at_data.min, meastemp);
+
+  if(at_data.rampUp == true) {
+    Reflow_setOuput((at_data.amplitude + at_data.bias) / 2, pheat, pfan);
+    if((numticks - at_data.t_last) < MIN_ON_TIME || meastemp < intsetpoint) {
+      // not on enough or temp is too low
       return false;
     }
 
-    if(AT_done()) {
-      float Tu = 0.0;
-      for(int i = 0; i < AT_CYCLES - 1; i++) {
-        Tu += 0.25 * (at_data.times[2 * (i + 1)] - at_data.times[2 * i]);
-      }
-      Tu /= (AT_CYCLES - 1);
-      printf("\n\nFound Ku: %.3f and Tu= %.3f\n", at_data.KNext, Tu);
-      printf("\n\nPID with small overshoot values : %.3f %.3f %.3f\n",
-             at_data.KNext / 3.0, at_data.KNext * 0.666 / Tu,
-             at_data.KNext * Tu / 9);
+    at_data.t_up   = numticks - at_data.t_last;
+    at_data.t_last = numticks;
+
+    // start cooling
+    at_data.rampUp = false;
+    at_data.min    = meastemp;
+    len = snprintf(buf, sizeof(buf), "Cooling [%d/%d]", at_data.iter + 1,
+                   at_data.Cycles);
+    LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
+    Reflow_setOuput((at_data.bias - at_data.amplitude) / 2, pheat, pfan);
+    return false;
+  } else {
+    Reflow_setOuput((at_data.bias - at_data.amplitude) / 2, pheat, pfan);
+    if((numticks - at_data.t_last) < MIN_ON_TIME || meastemp > intsetpoint) {
+      return false;
+    }
+
+    at_data.t_down = numticks - at_data.t_last;
+    at_data.t_last = numticks;
+    at_data.iter += 1;
+    printf("\nFinished cycle %d/%d\n", at_data.iter, at_data.Cycles);
+
+    float rel_diff =
+        fabs(at_data.t_up - at_data.t_down) / (at_data.t_up + at_data.t_down);
+    printf("\nUp: %.2fs Down: %.2fs diff: %.2f%%\n",
+           (float)at_data.t_up / TICKS_PER_SECOND,
+           (float)at_data.t_down / TICKS_PER_SECOND, rel_diff * 200.0);
+
+    if(at_data.iter >= at_data.Cycles) {
+      // TODO: end autotune here
+      float out_amplitude = at_data.max - at_data.min;
+      float Ku = 2.0 * at_data.amplitude / (float)(M_PI) * (out_amplitude);
+      float Tu = (float)(at_data.t_up + at_data.t_down) / TICKS_PER_SECOND;
+      printf("\nGot Ku=%.3f Tu=%.3f\n", Ku, Tu);
+
       return true;
     }
 
-    LCD_FB_Clear();
-    LCD_BMPDisplay(graphbmp, 0, 0);
-
-    at_data.nextIdx = 0;
-    at_data.State   = AT_RUN_CYCLES;
-    PID_SetTunings(&PID, at_data.KNext, 0, 0);
-    PID_SetMode(&PID, PID_Mode_Manual);
-    PID_SetMode(&PID, PID_Mode_Automatic);
-    at_data.last         = meastemp;
-    at_data.extremums[0] = NAN;
-    at_data.times[0]     = 0;
-    numticks             = 0;
-
-    len = snprintf(buf, sizeof(buf), "K=%.3f", at_data.KNext);
-    Reflow_lcdStatus(buf, len);
-    printf("\nTarget Kp=%.3f\n", at_data.KNext);
-  }
-
-  if(numticks > AT_TICK_LIMITS) {
-    Reflow_MeasureAutotune();
-    // we cooldown
-    at_data.State = AT_COOLDONW;
-    *pheat        = 0;
-    *pfan         = 255;
-    return false;
-  }
-
-  float output = PID_Compute(&PID, intsetpoint, meastemp);
-  Reflow_setOuput(output, pheat, pfan);
-  bool newCandidate = false;
-  // only found max within 40% of the region.
-  if(fabs(meastemp - intsetpoint) / intsetpoint < 0.4) {
-    if(at_data.nextIdx % 2 == 0) {
-      newCandidate = meastemp > at_data.last;
+    at_data.bias = (at_data.amplitude * (at_data.t_up - at_data.t_down)) /
+                   (at_data.t_up + at_data.t_down);
+    at_data.bias = MATH_CLAMP(at_data.bias, -470, 470);
+    if(at_data.bias >= 0) {
+      at_data.amplitude = 510 - at_data.bias;
     } else {
-      newCandidate = meastemp < at_data.last;
+      at_data.amplitude = 510 + at_data.bias;
     }
-  }
-  at_data.last = meastemp;
+    printf("\n bias=%d amplitude=%d\n", at_data.bias, at_data.amplitude);
 
-  if(newCandidate) {
-    at_data.extremums[at_data.nextIdx] = meastemp;
-    at_data.times[at_data.nextIdx]     = numticks;
-    // not reached an extrema yet, continue
-    return false;
-  } else if((numticks - at_data.times[at_data.nextIdx]) >= 6 // 1.5s
-            && isnan(at_data.extremums[at_data.nextIdx]) == false) {
-
-    printf("\nfound %s = %.1f @ %f [%d/%d]\n",
-           at_data.nextIdx % 2 == 0 ? "max" : "min",
-           at_data.extremums[at_data.nextIdx],
-           (float)at_data.times[at_data.nextIdx] / (float)TICKS_PER_SECOND,
-           at_data.nextIdx + 1, AT_CYCLES * 2);
-    at_data.nextIdx++;
-  } else {
-    return false; // no ext found, continue
-  }
-
-  if(at_data.nextIdx < 2 * AT_CYCLES) {
-    at_data.extremums[at_data.nextIdx] = NAN;
-    at_data.times[at_data.nextIdx]     = numticks;
-    // still not measured enough cycles, continue
+    // start heating
+    at_data.rampUp = true;
+    at_data.max    = meastemp;
+    len = snprintf(buf, sizeof(buf), "Heating [%d/%d]", at_data.iter + 1,
+                   at_data.Cycles);
+    LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
+    Reflow_setOuput((at_data.bias + at_data.amplitude) / 2, pheat, pfan);
     return false;
   }
-
-  Reflow_MeasureAutotune();
-  at_data.State = AT_COOLDONW;
-  *pheat        = 0;
-  *pfan         = 0;
-  return false;
 }
