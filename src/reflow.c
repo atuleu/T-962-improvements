@@ -417,6 +417,44 @@ float Reflow_Autotune_GetKp() { return at_data.KNext; }
 static char buf[22];
 static int len;
 
+#define AT_TICK_LIMITS 300 * TICKS_PER_SECOND
+
+void Reflow_MeasureAutotune() {
+  bool decreasing = true;
+  if(numticks < AT_TICK_LIMITS) {
+
+    float avgStart = 0.0, avgEnd = 0.0;
+    for(int i = 1; i < AT_CYCLES / 3; ++i) {
+      avgStart += fabsf(at_data.extremums[i] - intsetpoint);
+      avgEnd += fabs(at_data.extremums[2 * AT_CYCLES - 1 - i] - intsetpoint);
+    }
+
+    if((avgEnd - avgStart) / avgEnd < -0.01) {
+      decreasing = true;
+    } else {
+      decreasing = false;
+    }
+  }
+
+  if(decreasing) {
+    // Decreasing -> we set Kmin
+    at_data.Kmin = at_data.KNext;
+    printf("\nDecreasing oscillation\n");
+  } else {
+    // Increasing -> we set Kmax
+    printf("\nIncreasing oscillation\n");
+    at_data.Kmax = at_data.KNext;
+  }
+
+  if(isnan(at_data.Kmax)) {
+    at_data.KNext = 2 * at_data.Kmin;
+  } else if(isnan(at_data.Kmin)) {
+    at_data.KNext = at_data.Kmax / 2.0;
+  } else {
+    at_data.KNext = at_data.Kmax + at_data.Kmin / 2;
+  }
+}
+
 bool Reflow_RunAutotune(float meastemp,
                         uint8_t* pheat,
                         uint8_t* pfan,
@@ -462,6 +500,15 @@ bool Reflow_RunAutotune(float meastemp,
     printf("\nTarget Kp=%.3f\n", at_data.KNext);
   }
 
+  if(numticks > AT_TICK_LIMITS) {
+    Reflow_MeasureAutotune();
+    // we cooldown
+    at_data.State = AT_COOLDONW;
+    *pheat        = 0;
+    *pfan         = 255;
+    return false;
+  }
+
   float output = PID_Compute(&PID, intsetpoint, meastemp);
   Reflow_setOuput(output, pheat, pfan);
   bool newCandidate = false;
@@ -500,34 +547,9 @@ bool Reflow_RunAutotune(float meastemp,
     return false;
   }
 
-  float avgStart = 0.0, avgEnd = 0.0;
-  for(int i = 1; i < AT_CYCLES / 3; ++i) {
-    avgStart += fabsf(at_data.extremums[i] - intsetpoint);
-    avgEnd += fabs(at_data.extremums[2 * AT_CYCLES - 1 - i] - intsetpoint);
-  }
-
-  if((avgEnd - avgStart) / avgEnd < -0.01) {
-    // Decreasing -> we set Kmin
-    at_data.Kmin = at_data.KNext;
-    printf("\nDecreasing oscillation\n");
-  } else {
-    // Increasing -> we set Kmax
-    printf("\nIncreasing oscillation\n");
-    at_data.Kmax = at_data.KNext;
-  }
-
-  if(isnan(at_data.Kmax)) {
-    at_data.KNext = 2 * at_data.Kmin;
-  } else if(isnan(at_data.Kmin)) {
-    at_data.KNext = at_data.Kmax / 2.0;
-  } else {
-    at_data.KNext = at_data.Kmax + at_data.Kmin / 2;
-  }
-
-  // we cooldown
+  Reflow_MeasureAutotune();
   at_data.State = AT_COOLDONW;
   *pheat        = 0;
-  *pfan         = 255;
-
+  *pfan         = 0;
   return false;
 }
