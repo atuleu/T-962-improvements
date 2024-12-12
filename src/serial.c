@@ -18,9 +18,12 @@
  */
 
 #include "LPC214x.h"
+
 #include <stdint.h>
 #include <stdio.h>
+
 #include "vic.h"
+
 #include "circbuffer.h"
 #include "serial.h"
 
@@ -31,15 +34,15 @@
 /* The following baud rates assume a 55.296MHz system clock */
 #ifdef SERIAL_2MBs
 /* Settings for 2Mb/s */
-#define BAUD_M  11
-#define BAUD_D  8
+#define BAUD_M 11
+#define BAUD_D 8
 /* Minimum allowed when running fractional brg is 3 according to UM10120 but
  * this works just fine! */
 #define BAUD_DL 1
 #else
 /* Settings for 115kbps */
-#define BAUD_M  1
-#define BAUD_D  0
+#define BAUD_M 1
+#define BAUD_D 0
 #define BAUD_DL 30
 #endif
 
@@ -48,24 +51,25 @@ static tcirc_buf txbuf;
 static tcirc_buf rxbuf;
 
 static void uart_putc(char thebyte) {
-	if (thebyte == '\n')
-		uart_putc('\r');
+  if(thebyte == '\n')
+    uart_putc('\r');
 
-	/* The following is done blocking. This means when you call printf() with lots of data,
-	 * it relies on the ability of the interrupt to drain the txbuf, otherwise the system
-	 * will lock up.
-	 */
-	if (!VIC_IsIRQDisabled()){
-		add_to_circ_buf(&txbuf, thebyte, 1);
-	} else {
-		add_to_circ_buf(&txbuf, thebyte, 0);
-	}
+  /* The following is done blocking. This means when you call printf() with lots
+   * of data, it relies on the ability of the interrupt to drain the txbuf,
+   * otherwise the system will lock up.
+   */
+  if(!VIC_IsIRQDisabled()) {
+    add_to_circ_buf(&txbuf, thebyte, 1);
+  } else {
+    add_to_circ_buf(&txbuf, thebyte, 0);
+  }
 
-	// If interrupt is disabled, we need to start the process and enable the interrupt
-	if ((U0IER & (1<<1)) == 0) {
-		U0THR = get_from_circ_buf(&txbuf);
-		U0IER |= 1<<1;
-	}
+  // If interrupt is disabled, we need to start the process and enable the
+  // interrupt
+  if((U0IER & (1 << 1)) == 0) {
+    U0THR = get_from_circ_buf(&txbuf);
+    U0IER |= 1 << 1;
+  }
 }
 
 // Blindly read character, assuming we knew one was available
@@ -77,13 +81,10 @@ int uart_isrxready(void){
 	return circ_buf_has_char(&rxbuf);
 }
 
-int uart_readline(char* buffer, int max_len) {
+int uart_read(char* buffer, int max_len) {
   int i = 0;
-  while(uart_isrxready()) {
+  while(i < max_len && uart_isrxready()) {
     buffer[i] = uart_readc();
-    if(buffer[i] == '\n' || i >= max_len) {
-      break;
-    }
     i++;
   }
   return i;

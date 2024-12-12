@@ -681,33 +681,39 @@ void Main_Home(MainData_t* data) {
 }
 
 void ProcessUART(MainData_t* data) {
-  char serial_cmd[255]     = "";
-  char* cmd_select_profile = "select profile %d";
-  char* cmd_bake           = "bake %d %d";
-  char* cmd_dump_profile   = "dump profile %d";
-  char* cmd_setting        = "setting %d %f";
-  char* cmd_autotune       = "PID autotune %d %f";
+  static char serial_cmd[255] = "";
+  char* cmd_select_profile    = "select profile %d";
+  char* cmd_bake              = "bake %d %d";
+  char* cmd_dump_profile      = "dump profile %d";
+  char* cmd_setting           = "setting %d %f";
+  char* cmd_autotune          = "PID autotune %d %f";
 
-  static size_t read = 0;
+  static int read = 0;
 
-  if(!uart_isrxready()) {
+  if(uart_isrxready() == false) {
     return;
   }
 
-  int len = uart_readline(&serial_cmd[read], 255 - read);
+  int len = uart_read(&serial_cmd[read], 255 - read);
 
   if(len == 0) {
     return;
   }
-
   read += len;
-  if(serial_cmd[read - 1] != '\n') {
-    if(read == 255) {
-      printf("input buffer overflow. please be gentle\n");
-      read = 0;
-    }
+
+  bool eol = serial_cmd[read - 1] == '\n' || serial_cmd[read - 1] == '\r';
+
+  if(read >= 255 && eol == false) {
+    printf("\ninput buffer overflow. please be gentle\n");
+    read = 0;
     return;
   }
+
+  if(eol == false) {
+    // keep growing the buffer
+    return;
+  }
+
   read             = MATH_CLAMP(read - 1, 0, 254);
   serial_cmd[read] = '\0'; // replace EOL by NULLCHAR
   // reset our read for next iteration buffer
