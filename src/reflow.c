@@ -198,11 +198,12 @@ void Reflow_Init(void) {
 
   Reflow_LoadSetpoint();
 
-  PID_SetOutputLimits(&PID, -255, 255);
   PID_SetMode(&PID, PID_Mode_Manual);
   PID_SetMode(&PID, PID_Mode_Automatic);
 
   PID_init(&PID, 0, 0, 0);
+  PID_SetOutputLimits(&PID, -255, 255);
+
   PID_SetSampleTime(&PID, PID_TIMEBASE);
   // Adjusted values to compensate for the incorrect timebase earlier
   PID_SetTunings(&PID, Setup_getValue(PID_K_VALUE_H),
