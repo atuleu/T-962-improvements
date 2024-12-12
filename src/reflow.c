@@ -371,6 +371,13 @@ typedef struct {
 
 static Autotune_t at_data;
 
+extern uint8_t graphbmp[];
+extern uint8_t stopbmp[];
+
+void Reflow_lcdStatus(char* msg, int len) {
+  LCD_disp_str((uint8_t*)msg, len, 13, 0, FONT6X6);
+}
+
 void Reflow_StartAutotune(float Kstart, uint16_t setpoint) {
   reflowdone = false;
   Reflow_SetSetpoint(setpoint);
@@ -380,6 +387,11 @@ void Reflow_StartAutotune(float Kstart, uint16_t setpoint) {
   at_data.Kmax  = NAN;
   at_data.State = AT_COOLDONW;
   numticks      = 0;
+
+  LCD_FB_Clear();
+  LCD_BMPDisplay(graphbmp, 0, 0);
+  LCD_BMPDisplay(stopbmp, 127 - 17, 0);
+  Reflow_lcdStatus("Cooling down", 12);
 }
 
 bool AT_done() {
@@ -389,8 +401,6 @@ bool AT_done() {
   return (at_data.Kmax - at_data.Kmin) / at_data.Kmin <
          0.05; // 5% relative error;
 }
-
-extern uint8_t graphbmp[];
 
 void plotTemperature(uint32_t tick, float temp) {
   if(tick % (TICKS_PER_SECOND * 5) != 0) {
@@ -403,6 +413,9 @@ void plotTemperature(uint32_t tick, float temp) {
 }
 
 float Reflow_Autotune_GetKp() { return at_data.KNext; }
+
+static char buf[22];
+static int len;
 
 bool Reflow_RunAutotune(float meastemp,
                         uint8_t* pheat,
@@ -443,7 +456,10 @@ bool Reflow_RunAutotune(float meastemp,
     at_data.extremums[0] = NAN;
     at_data.times[0]     = 0;
     numticks             = 0;
-    printf("\nTesting K=%.3f\n\n", at_data.KNext);
+
+    len = snprintf(buf, sizeof(buf), "K=%.3f", at_data.KNext);
+    Reflow_lcdStatus(buf, len);
+    printf("\nTarget Kp=%.3f\n", at_data.KNext);
   }
 
   float output = PID_Compute(&PID, intsetpoint, meastemp);

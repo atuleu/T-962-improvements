@@ -823,8 +823,8 @@ void ProcessUART(MainData_t* data) {
 void Main_Autotune(MainData_t* data) {
   uint32_t ticks = RTC_Read();
 
-  len = snprintf(buf, sizeof(buf), "%.2f", Reflow_Autotune_GetKp());
-  LCD_disp_str((uint8_t*)"Kp ", 3, 110, 7, FONT6X6);
+  len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetSetpoint());
+  LCD_disp_str((uint8_t*)"SET", 3, 110, 7, FONT6X6);
   LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
 
   len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetActualTemp());
