@@ -9,6 +9,8 @@
 #include "PID_v1.h"
 #include "math.h"
 #include "utils.h"
+
+#include "stdio.h"
 void PID_Initialize(PidType* pid);
 
 /*Constructor (...)*********************************************************
@@ -55,7 +57,7 @@ FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual) {
   FloatType output = pid->kp * error + pid->ITerm - pid->kd * dError;
   /*Remember some variables for next time*/
   pid->lastError   = error;
-
+  printf("\n no clamp: %f min: %f max:%f \n", output, pid->outMin, pid->outMax);
   return MATH_CLAMP(output, pid->outMin, pid->outMax);
 
   //  } else {
@@ -105,9 +107,13 @@ void PID_SetSampleTime(PidType* pid, int NewSampleTime) {
  *  here.
  **************************************************************************/
 void PID_SetOutputLimits(PidType* pid, FloatType Min, FloatType Max) {
+  printf("\n==================================================================="
+         "=============\nGot new limit %f - %f\n",
+         Min, Max);
   if(Min >= Max) {
     return;
   }
+
   pid->outMin = Min;
   pid->outMax = Max;
 

@@ -442,7 +442,9 @@ bool Reflow_RunAutotune(float meastemp,
     printf("\nTesting K=%.3f\n\n", at_data.KNext);
   }
 
-  Reflow_setOuput(PID_Compute(&PID, intsetpoint, meastemp), pheat, pfan);
+  float output = PID_Compute(&PID, intsetpoint, meastemp);
+  printf("\noutput is %f\n", output);
+  Reflow_setOuput(output, pheat, pfan);
   bool newCandidate = false;
   if(at_data.nextIdx % 2 == 0) {
     newCandidate = meastemp > at_data.last;
