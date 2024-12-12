@@ -351,7 +351,7 @@ bool Reflow_RunProfile(uint32_t thetime,
 
 void Reflow_ToggleStandbyLogging(void) { standby_logging = !standby_logging; }
 
-#define AT_CYCLES 8
+#define AT_CYCLES 6
 typedef enum
 {
   AT_COOLDONW   = 0,
@@ -464,9 +464,11 @@ bool Reflow_RunAutotune(float meastemp,
   } else if((numticks - at_data.times[at_data.nextIdx]) >= 6 // 1.5s
             && isnan(at_data.extremums[at_data.nextIdx]) == false) {
 
-    printf("\nfound %s = %.1f\n @ %f", at_data.nextIdx % 2 == 0 ? "max" : "min",
+    printf("\nfound %s = %.1f @ %f [%d/%d]\n",
+           at_data.nextIdx % 2 == 0 ? "max" : "min",
            at_data.extremums[at_data.nextIdx],
-           (float)at_data.times[at_data.nextIdx] / (float)TICKS_PER_SECOND);
+           (float)at_data.times[at_data.nextIdx] / (float)TICKS_PER_SECOND,
+           at_data.nextIdx + 1, AT_CYCLES * 2);
     at_data.nextIdx++;
   } else {
     return false; // no ext found, continue
@@ -480,7 +482,7 @@ bool Reflow_RunAutotune(float meastemp,
   }
 
   float avgStart = 0.0, avgEnd = 0.0;
-  for(int i = 0; i < AT_CYCLES / 2; ++i) {
+  for(int i = 1; i < AT_CYCLES / 3; ++i) {
     avgStart += fabsf(at_data.extremums[i] - intsetpoint);
     avgEnd += fabs(at_data.extremums[2 * AT_CYCLES - 1 - i] - intsetpoint);
   }
