@@ -687,111 +687,129 @@ void ProcessUART(MainData_t* data) {
   char* cmd_setting        = "setting %d %f";
   char* cmd_autotune       = "PID autotune %d %f";
 
-  if(uart_isrxready()) {
-    int len = uart_readline(serial_cmd, 255);
+  static size_t read = 0;
 
-    if(len > 0) {
-      int param, param1;
-      float paramF;
+  if(!uart_isrxready()) {
+    return;
+  }
 
-      if(strcmp(serial_cmd, "about") == 0) {
-        printf(format_about, Version_GetGitVersion());
-        len = IO_Partinfo(buf, sizeof(buf), "\nPart number: %s rev %c\n");
-        printf("%s", buf);
-        EEPROM_Dump();
+  int len = uart_readline(&serial_cmd[read], 255 - read);
 
-        printf("\nSensor values:\n");
-        Sensor_ListAll();
+  if(len == 0) {
+    return;
+  }
 
-      } else if(strcmp(serial_cmd, "help") == 0 ||
-                strcmp(serial_cmd, "?") == 0) {
-        printf("%s", help_text);
-
-      } else if(strcmp(serial_cmd, "list profiles") == 0) {
-        printf("\nReflow profiles available:\n");
-
-        Reflow_ListProfiles();
-        printf("\n");
-
-      } else if(strcmp(serial_cmd, "reflow") == 0) {
-        printf("\nStarting reflow with profile: %s\n", Reflow_GetProfileName());
-        data->mode        = MAIN_HOME;
-        // this is a bit dirty, but with the least code duplication.
-        data->keyspressed = KEY_S;
-
-      } else if(strcmp(serial_cmd, "list settings") == 0) {
-        printf("\nCurrent settings:\n\n");
-        for(int i = 0; i < Setup_getNumItems(); i++) {
-          printf("%d: ", i);
-          Setup_printFormattedValue(i);
-          printf("\n");
-        }
-
-      } else if(strcmp(serial_cmd, "stop") == 0) {
-        printf("\nStopping bake/reflow");
-        data->mode = MAIN_HOME;
-        Reflow_SetMode(REFLOW_STANDBY);
-        data->retval = 0;
-
-      } else if(strcmp(serial_cmd, "quiet") == 0) {
-        Reflow_ToggleStandbyLogging();
-        printf("\nToggled standby logging\n");
-
-      } else if(strcmp(serial_cmd, "values") == 0) {
-        printf("\nActual measured values:\n");
-        Sensor_ListAll();
-        printf("\n");
-
-      } else if(sscanf(serial_cmd, cmd_select_profile, &param) > 0) {
-        // select profile
-        Reflow_SelectProfileIdx(param);
-        printf("\nSelected profile %d: %s\n", param, Reflow_GetProfileName());
-
-      } else if(sscanf(serial_cmd, cmd_bake, &param, &param1) > 0) {
-        if(param < SETPOINT_MIN) {
-          printf("\nSetpoint must be >= %ddegC\n", SETPOINT_MIN);
-          param = SETPOINT_MIN;
-        }
-        if(param > SETPOINT_MAX) {
-          printf("\nSetpont must be <= %ddegC\n", SETPOINT_MAX);
-          param = SETPOINT_MAX;
-        }
-        if(param1 < 1) {
-          printf("\nTimer must be greater than 0\n");
-          param1 = 1;
-        }
-
-        if(param1 < BAKE_TIMER_MAX) {
-          printf("\nStarting bake with setpoint %ddegC for %ds after reaching "
-                 "setpoint\n",
-                 param, param1);
-          data->timer = param1;
-          Reflow_SetBakeTimer(data->timer);
-        } else {
-          printf("\nStarting bake with setpoint %ddegC\n", param);
-        }
-
-        data->setpoint = param;
-        Reflow_SetSetpoint(data->setpoint);
-        data->mode = MAIN_BAKE;
-        Reflow_SetMode(REFLOW_BAKE);
-
-      } else if(sscanf(serial_cmd, cmd_dump_profile, &param) > 0) {
-        printf("\nDumping profile %d: %s\n ", param, Reflow_GetProfileName());
-        Reflow_DumpProfile(param);
-
-      } else if(sscanf(serial_cmd, cmd_setting, &param, &paramF) > 0) {
-        Setup_setRealValue(param, paramF);
-        printf("\nAdjusted setting: ");
-        Setup_printFormattedValue(param);
-      } else if(sscanf(serial_cmd, cmd_autotune, &param, &paramF) > 0) {
-        Reflow_Init();
-        Reflow_StartAutotune(paramF, param);
-        data->mode = MAIN_AUTOTUNE;
-      }
-    } else {
-      printf("\nCannot understand command, ? for help\n");
+  read += len;
+  if(serial_cmd[read - 1] != '\n') {
+    if(read == 255) {
+      printf("input buffer overflow. please be gentle\n");
+      read = 0;
     }
+    return;
+  }
+  read             = MATH_CLAMP(read - 1, 0, 254);
+  serial_cmd[read] = '\0'; // replace EOL by NULLCHAR
+  // reset our read for next iteration buffer
+  read             = 0;
+
+  int param, param1;
+  float paramF;
+
+  if(strcmp(serial_cmd, "about") == 0) {
+    printf(format_about, Version_GetGitVersion());
+    len = IO_Partinfo(buf, sizeof(buf), "\nPart number: %s rev %c\n");
+    printf("%s", buf);
+    EEPROM_Dump();
+
+    printf("\nSensor values:\n");
+    Sensor_ListAll();
+
+  } else if(strcmp(serial_cmd, "help") == 0 || strcmp(serial_cmd, "?") == 0) {
+    printf("%s", help_text);
+
+  } else if(strcmp(serial_cmd, "list profiles") == 0) {
+    printf("\nReflow profiles available:\n");
+
+    Reflow_ListProfiles();
+    printf("\n");
+
+  } else if(strcmp(serial_cmd, "reflow") == 0) {
+    printf("\nStarting reflow with profile: %s\n", Reflow_GetProfileName());
+    data->mode        = MAIN_HOME;
+    // this is a bit dirty, but with the least code duplication.
+    data->keyspressed = KEY_S;
+
+  } else if(strcmp(serial_cmd, "list settings") == 0) {
+    printf("\nCurrent settings:\n\n");
+    for(int i = 0; i < Setup_getNumItems(); i++) {
+      printf("%d: ", i);
+      Setup_printFormattedValue(i);
+      printf("\n");
+    }
+
+  } else if(strcmp(serial_cmd, "stop") == 0) {
+    printf("\nStopping bake/reflow");
+    data->mode = MAIN_HOME;
+    Reflow_SetMode(REFLOW_STANDBY);
+    data->retval = 0;
+
+  } else if(strcmp(serial_cmd, "quiet") == 0) {
+    Reflow_ToggleStandbyLogging();
+    printf("\nToggled standby logging\n");
+
+  } else if(strcmp(serial_cmd, "values") == 0) {
+    printf("\nActual measured values:\n");
+    Sensor_ListAll();
+    printf("\n");
+
+  } else if(sscanf(serial_cmd, cmd_select_profile, &param) > 0) {
+    // select profile
+    Reflow_SelectProfileIdx(param);
+    printf("\nSelected profile %d: %s\n", param, Reflow_GetProfileName());
+
+  } else if(sscanf(serial_cmd, cmd_bake, &param, &param1) > 0) {
+    if(param < SETPOINT_MIN) {
+      printf("\nSetpoint must be >= %ddegC\n", SETPOINT_MIN);
+      param = SETPOINT_MIN;
+    }
+    if(param > SETPOINT_MAX) {
+      printf("\nSetpont must be <= %ddegC\n", SETPOINT_MAX);
+      param = SETPOINT_MAX;
+    }
+    if(param1 < 1) {
+      printf("\nTimer must be greater than 0\n");
+      param1 = 1;
+    }
+
+    if(param1 < BAKE_TIMER_MAX) {
+      printf("\nStarting bake with setpoint %ddegC for %ds after reaching "
+             "setpoint\n",
+             param, param1);
+      data->timer = param1;
+      Reflow_SetBakeTimer(data->timer);
+    } else {
+      printf("\nStarting bake with setpoint %ddegC\n", param);
+    }
+
+    data->setpoint = param;
+    Reflow_SetSetpoint(data->setpoint);
+    data->mode = MAIN_BAKE;
+    Reflow_SetMode(REFLOW_BAKE);
+
+  } else if(sscanf(serial_cmd, cmd_dump_profile, &param) > 0) {
+    printf("\nDumping profile %d: %s\n ", param, Reflow_GetProfileName());
+    Reflow_DumpProfile(param);
+
+  } else if(sscanf(serial_cmd, cmd_setting, &param, &paramF) > 0) {
+    Setup_setRealValue(param, paramF);
+    printf("\nAdjusted setting: ");
+    Setup_printFormattedValue(param);
+  } else if(sscanf(serial_cmd, cmd_autotune, &param, &paramF) > 0) {
+    Reflow_Init();
+    Reflow_StartAutotune(paramF, param);
+    data->mode = MAIN_AUTOTUNE;
+  } else {
+    printf("\nCannot understand command '%s', ? for help\n", serial_cmd);
   }
 }
 
