@@ -42,6 +42,8 @@ FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual) {
   if(!pid->inAuto) {
     return NAN;
   }
+  // printf("\nPID target: %f, actual: %f\n", target, actual);
+
   //  unsigned long now = millis();
   //  unsigned long timeChange = (now - pid->lastTime);
   //  if (timeChange >= pid->SampleTime) {
@@ -53,14 +55,15 @@ FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual) {
   FloatType dError = isnan(pid->lastError) ? 0.0 : (error - pid->lastError);
 
   /*Compute PID Output*/
-  FloatType output = pid->kp * error + pid->ITerm - pid->kd * dError;
+  FloatType kterm = pid->kp * error;
+  FloatType dterm = pid->kd * dError;
   /*Remember some variables for next time*/
-  pid->lastError   = error;
+  pid->lastError  = error;
 
-  // printf("\n no clamp: %f min: %f max:%f \n", output, pid->outMin,
-  // pid->outMax);
+  //  printf("\n err: %f Kp: %f Ke: %f Ie: %f De:%f \n", error, pid->kp, kterm,
+  //      pid->ITerm, dterm);
 
-  return MATH_CLAMP(output, pid->outMin, pid->outMax);
+  return MATH_CLAMP(kterm + pid->ITerm + dterm, pid->outMin, pid->outMax);
 }
 
 /* SetTunings(...)*************************************************************

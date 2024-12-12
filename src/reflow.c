@@ -444,7 +444,9 @@ bool Reflow_RunAutotune(float meastemp,
   }
 
   float output = PID_Compute(&PID, intsetpoint, meastemp);
-  printf("\noutput is %f\n", output);
+  printf("\ntick:%d rtc:%d output is %f\n", at_data.numTick, RTC_Read(),
+         output);
+
   Reflow_setOuput(output, pheat, pfan);
   bool newCandidate = false;
   if(at_data.nextIdx % 2 == 0) {
