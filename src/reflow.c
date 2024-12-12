@@ -363,7 +363,6 @@ typedef struct {
   uint32_t times[2 * AT_CYCLES];
   float last;
   uint8_t nextIdx;
-  uint32_t numTick;
   float Kmin;
   float Kmax;
   float KNext;
@@ -375,12 +374,12 @@ static Autotune_t at_data;
 void Reflow_StartAutotune(float Kstart, uint16_t setpoint) {
   reflowdone = false;
   Reflow_SetSetpoint(setpoint);
-  mymode          = REFLOW_AUTOTUNE;
-  at_data.KNext   = Kstart;
-  at_data.Kmax    = NAN;
-  at_data.Kmax    = NAN;
-  at_data.State   = AT_COOLDONW;
-  at_data.numTick = 0;
+  mymode        = REFLOW_AUTOTUNE;
+  at_data.KNext = Kstart;
+  at_data.Kmax  = NAN;
+  at_data.Kmax  = NAN;
+  at_data.State = AT_COOLDONW;
+  numticks      = 0;
 }
 
 bool AT_done() {
@@ -409,10 +408,13 @@ bool Reflow_RunAutotune(float meastemp,
                         uint8_t* pheat,
                         uint8_t* pfan,
                         int32_t setpoint) {
-  plotTemperature(at_data.numTick, meastemp);
+  numticks += 1;
+  plotTemperature(numticks, meastemp);
+
   if(at_data.State == AT_COOLDONW) {
     if(meastemp > STANDBYTEMP) {
-      *pfan = 255;
+      *pfan  = 255;
+      *pheat = 0;
       return false;
     }
 
@@ -439,14 +441,12 @@ bool Reflow_RunAutotune(float meastemp,
     PID_SetMode(&PID, PID_Mode_Automatic);
     at_data.last         = meastemp;
     at_data.extremums[0] = NAN;
-    at_data.numTick      = -1;
+    at_data.times[0]     = 0;
+    numticks             = 0;
     printf("\nTesting K=%.3f\n\n", at_data.KNext);
   }
 
   float output = PID_Compute(&PID, intsetpoint, meastemp);
-  printf("\ntick:%d rtc:%d output is %f\n", at_data.numTick, RTC_Read(),
-         output);
-
   Reflow_setOuput(output, pheat, pfan);
   bool newCandidate = false;
   if(at_data.nextIdx % 2 == 0) {
@@ -458,19 +458,23 @@ bool Reflow_RunAutotune(float meastemp,
 
   if(newCandidate) {
     at_data.extremums[at_data.nextIdx] = meastemp;
-    at_data.times[at_data.nextIdx]     = at_data.numTick;
+    at_data.times[at_data.nextIdx]     = numticks;
     // not reached an extrema yet, continue
     return false;
-  } else if((at_data.times[at_data.nextIdx] - at_data.numTick) >= 10 // 2.5s
+  } else if((numticks - at_data.times[at_data.nextIdx]) >= 6 // 1.5s
             && isnan(at_data.extremums[at_data.nextIdx]) == false) {
+
+    printf("\nfound %s = %.1f\n @ %f", at_data.nextIdx % 2 == 0 ? "max" : "min",
+           at_data.extremums[at_data.nextIdx],
+           (float)at_data.times[at_data.nextIdx] / (float)TICKS_PER_SECOND);
     at_data.nextIdx++;
-    printf("\n found max at %.1f\n\n", at_data.extremums[at_data.nextIdx - 1]);
   } else {
     return false; // no ext found, continue
   }
 
   if(at_data.nextIdx < 2 * AT_CYCLES) {
     at_data.extremums[at_data.nextIdx] = NAN;
+    at_data.times[at_data.nextIdx]     = numticks;
     // still not measured enough cycles, continue
     return false;
   }
@@ -484,10 +488,10 @@ bool Reflow_RunAutotune(float meastemp,
   if((avgEnd - avgStart) / avgEnd < -0.01) {
     // Decreasing -> we set Kmin
     at_data.Kmin = at_data.KNext;
-    printf("\nDecreasing oscillation\n\n");
+    printf("\nDecreasing oscillation\n");
   } else {
     // Increasing -> we set Kmax
-    printf("\nIncreasing oscillation\n\n");
+    printf("\nIncreasing oscillation\n");
     at_data.Kmax = at_data.KNext;
   }
 
