@@ -823,28 +823,53 @@ void ProcessUART(MainData_t* data) {
 
 void Main_Autotune(MainData_t* data) {
   uint32_t ticks = RTC_Read();
+  static bool once;
+  if(Reflow_IsDone() == false) {
+    len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetSetpoint());
+    LCD_disp_str((uint8_t*)"SET", 3, 110, 7, FONT6X6);
+    LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
 
-  len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetSetpoint());
-  LCD_disp_str((uint8_t*)"SET", 3, 110, 7, FONT6X6);
-  LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
+    len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetActualTemp());
+    LCD_disp_str((uint8_t*)"ACT", 3, 110, 20, FONT6X6);
+    LCD_disp_str((uint8_t*)buf, len, 110, 26, FONT6X6);
 
-  len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetActualTemp());
-  LCD_disp_str((uint8_t*)"ACT", 3, 110, 20, FONT6X6);
-  LCD_disp_str((uint8_t*)buf, len, 110, 26, FONT6X6);
+    len = snprintf(buf, sizeof(buf), "%03u", (unsigned int)ticks);
+    LCD_disp_str((uint8_t*)"RUN", 3, 110, 33, FONT6X6);
+    LCD_disp_str((uint8_t*)buf, len, 110, 39, FONT6X6);
+    once = true;
+  }
 
-  len = snprintf(buf, sizeof(buf), "%03u", (unsigned int)ticks);
-  LCD_disp_str((uint8_t*)"RUN", 3, 110, 33, FONT6X6);
-  LCD_disp_str((uint8_t*)buf, len, 110, 39, FONT6X6);
-
-  if(Reflow_IsDone() || data->keyspressed & KEY_S) {
-    printf("\nAutotune %s\n",
-           (Reflow_IsDone() ? "done" : "interrupted by keypress"));
-    if(Reflow_IsDone()) {
-      Buzzer_Beep(BUZZ_1KHZ, 255,
-                  TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
-    }
+  if(data->keyspressed & KEY_S) {
+    printf("\nAutotune interrupted by keypress\n");
     data->mode = MAIN_HOME;
     Reflow_SetMode(REFLOW_STANDBY);
-    data->retval = 0; // Force immediate refresh
+    data->retval = 0;
+    return;
+  }
+
+  if(Reflow_IsDone() == false) {
+    return;
+  }
+
+  if(once == true) {
+    once = false;
+    printf("\nAutotune done\n");
+    Reflow_SetMode(REFLOW_STANDBY);
+    Buzzer_Beep(BUZZ_1KHZ, 255,
+                TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
+
+    LCD_FB_Clear();
+    len = snprintf(buf, sizeof(buf), "Autotune Result");
+    LCD_disp_str((uint8_t*)buf, len, 1, 0, FONT6X6);
+    len = snprintf(buf, sizeof(buf), "Ku=%.1f Tu=%.1fs", Reflow_Autotune_Ku(),
+                   Reflow_Autotune_Tu());
+    LCD_disp_str((uint8_t*)buf, len, 1, 1, FONT6X6);
+  }
+
+  if(data->keyspressed & KEY_F1) {
+    // TODO: set the value
+    data->mode   = MAIN_HOME;
+    data->retval = 0;
+    return;
   }
 }
