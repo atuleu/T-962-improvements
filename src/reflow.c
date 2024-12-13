@@ -38,9 +38,10 @@
 #define STANDBYTEMP (50)
 
 // 250ms between each run
-#define PID_TIMEBASE (250)
+#define PID_TIMEBASE_MS (250)
 
-#define TICKS_PER_SECOND (1000 / PID_TIMEBASE)
+// 100ms between each run
+#define AUTOTUNE_TIMEBASE_MS (100)
 
 static PidType PID;
 
@@ -51,9 +52,31 @@ static float avgtemp;
 
 static bool reflowdone     = false;
 static ReflowMode_t mymode = REFLOW_STANDBY;
-static uint16_t numticks   = 0;
 
-static int standby_logging = 0;
+static bool standby_logging = false;
+
+typedef struct {
+  uint16_t tick;
+  uint8_t period_ms;
+  uint32_t period_tick;
+  uint16_t tick_per_second;
+} period_t;
+
+static period_t time = {
+    .tick            = 0,
+    .period_ms       = PID_TIMEBASE_MS,
+    .period_tick     = TICKS_MS(PID_TIMEBASE_MS),
+    .tick_per_second = 1000 / PID_TIMEBASE_MS,
+};
+
+void Reflow_setPeriod(uint8_t period_ms) {
+  if(period_ms == 0 || period_ms == time.period_ms) {
+    return;
+  }
+  time.period_ms       = period_ms;
+  time.period_tick     = TICKS_MS(period_ms);
+  time.tick_per_second = 1000 / period_ms;
+}
 
 bool Reflow_RunProfile(uint32_t thetime,
                        float meastemp,
@@ -81,8 +104,12 @@ static int32_t Reflow_Work(void) {
 
   const char* modestr = "UNKNOWN";
 
+  bool logging = false;
   // Depending on mode we should run this with different parameters
-  if(mymode == REFLOW_STANDBY || mymode == REFLOW_STANDBYFAN) {
+  switch(mymode) {
+  case REFLOW_STANDBY:
+  case REFLOW_STANDBYFAN:
+    Reflow_setPeriod(PID_TIMEBASE_MS);
     intsetpoint = STANDBYTEMP;
     // Cool to standby temp but don't heat to get there
     Reflow_RunManual(avgtemp, &heat, &fan, intsetpoint);
@@ -94,30 +121,41 @@ static int32_t Reflow_Work(void) {
     }
     modestr = "STANDBY";
 
-  } else if(mymode == REFLOW_BAKE) {
+    logging = standby_logging;
+    break;
+  case REFLOW_BAKE:
+    Reflow_setPeriod(PID_TIMEBASE_MS);
     reflowdone = Reflow_RunManual(avgtemp, &heat, &fan, intsetpoint);
     modestr    = "BAKE";
-
-  } else if(mymode == REFLOW_REFLOW) {
+    logging    = true;
+    break;
+  case REFLOW_REFLOW:
+    Reflow_setPeriod(PID_TIMEBASE_MS);
     reflowdone = Reflow_RunProfile(ticks, avgtemp, &heat, &fan);
     modestr    = "REFLOW";
-
-  } else if(mymode == REFLOW_AUTOTUNE) {
+    logging    = true;
+    break;
+  case REFLOW_AUTOTUNE:
+    Reflow_setPeriod(AUTOTUNE_TIMEBASE_MS);
     reflowdone = Reflow_RunAutotune(avgtemp, &heat, &fan, intsetpoint);
     modestr    = "AUTOTUNE";
-  } else {
+    logging    = false;
+    break;
+  default:
+    Reflow_setPeriod(PID_TIMEBASE_MS);
     heat = fan = 0;
   }
+
   Set_Heater(heat);
   Set_Fan(fan);
 
   if(mymode != oldmode) {
     printf("\n# Time,  Temp0, Temp1, Temp2, Temp3,  Set,Actual, Heat, Fan,  "
            "ColdJ, Mode");
-    oldmode  = mymode;
-    numticks = 0;
+    oldmode   = mymode;
+    time.tick = 0;
   } else if(mymode == REFLOW_BAKE) {
-    if(bake_timer > 0 && numticks >= bake_timer) {
+    if(bake_timer > 0 && time.tick >= bake_timer) {
       printf("\n DONE baking, set bake timer to 0.");
       bake_timer = 0;
       Reflow_SetMode(REFLOW_STANDBY);
@@ -127,37 +165,39 @@ static int32_t Reflow_Work(void) {
     if(avgtemp < intsetpoint && bake_timer > 0) {
       modestr = "BAKE-PREHEAT";
     } else {
-      numticks++;
+      time.tick++;
     }
-  } else if(mymode == REFLOW_REFLOW) {
-    numticks++;
+  } else if(mymode == REFLOW_REFLOW || mymode == REFLOW_AUTOTUNE) {
+    time.tick++;
   }
 
-  if(!(mymode == REFLOW_STANDBY && standby_logging == 0)) {
+  if(logging == true) {
     printf("\n%6.1f,  %5.1f, %5.1f, %5.1f, %5.1f,  %3u, %5.1f,  %3u, %3u,  "
            "%5.1f, %s",
-           ((float)numticks / TICKS_PER_SECOND), Sensor_GetTemp(TC_LEFT),
+           ((float)time.tick / time.tick_per_second), Sensor_GetTemp(TC_LEFT),
            Sensor_GetTemp(TC_RIGHT), Sensor_GetTemp(TC_EXTRA1),
            Sensor_GetTemp(TC_EXTRA2), intsetpoint, avgtemp, heat, fan,
            Sensor_GetTemp(TC_COLD_JUNCTION), modestr);
   }
 
-  if(numticks & 1) {
-    // Force UI refresh every other cycle
+  if(time.tick % time.tick_per_second == 0) {
+    // Force UI refresh every second
     Sched_SetState(MAIN_WORK, 2, 0);
   }
 
+  // period            = TICKS_MS(period);
+  //  reschedule task according to period
   uint32_t thistick = Sched_GetTick();
   if(lasttick == 0) {
-    lasttick = thistick - TICKS_MS(PID_TIMEBASE);
+    lasttick = thistick - time.period_tick;
   }
 
-  int32_t nexttick = (2 * TICKS_MS(PID_TIMEBASE)) - (thistick - lasttick);
-  if((thistick - lasttick) > (2 * TICKS_MS(PID_TIMEBASE))) {
+  int32_t nexttick = (2 * time.period_tick) - (thistick - lasttick);
+  if((thistick - lasttick) > (2 * time.period_tick)) {
     printf("\nReflow can't keep up with desired PID_TIMEBASE!");
     nexttick = 0;
   }
-  lasttick += TICKS_MS(PID_TIMEBASE);
+  lasttick += time.period_tick;
   return nexttick;
 }
 
@@ -205,7 +245,7 @@ void Reflow_Init(void) {
   PID_init(&PID, 0, 0, 0);
   PID_SetOutputLimits(&PID, -255, 255);
 
-  PID_SetSampleTime(&PID, PID_TIMEBASE);
+  PID_SetSampleTime(&PID, PID_TIMEBASE_MS);
   // Adjusted values to compensate for the incorrect timebase earlier
   PID_SetTunings(&PID, Setup_getValue(PID_K_VALUE_H),
                  Setup_getValue(PID_I_VALUE_H), Setup_getValue(PID_D_VALUE_H));
@@ -253,9 +293,9 @@ uint16_t Reflow_GetSetpoint(void) {
 }
 
 void Reflow_SetBakeTimer(int seconds) {
-	// reset ticks to 0 when adjusting timer.
-	numticks = 0;
-	bake_timer = seconds * TICKS_PER_SECOND;
+  // reset ticks to 0 when adjusting timer.
+  time.tick  = 0;
+  bake_timer = seconds * (1000 / PID_TIMEBASE_MS);
 }
 
 int Reflow_IsPreheating(void) {
@@ -266,7 +306,7 @@ int Reflow_GetTimeLeft(void) {
   if(bake_timer == 0) {
     return -1;
   }
-  return (bake_timer - numticks) / TICKS_PER_SECOND;
+  return (bake_timer - time.tick) / time.tick_per_second;
 }
 
 void Reflow_setOuput(int16_t out, uint8_t* pheat, uint8_t* pfan) {
@@ -361,11 +401,6 @@ void Reflow_ToggleStandbyLogging(void) { standby_logging = !standby_logging; }
 // down half-period.
 
 #define AT_CYCLES 6
-typedef enum
-{
-  AT_COOLDONW   = 0,
-  AT_RUN_CYCLES = 1
-} AT_State_t;
 
 typedef struct {
   float max, min;
@@ -373,7 +408,7 @@ typedef struct {
   int32_t bias;
   int8_t Cycles, iter;
   bool rampUp;
-  uint32_t t_down, t_up, t_last;
+  uint16_t t_down, t_up, t_last;
 } Autotune_t;
 
 static Autotune_t at_data;
@@ -400,7 +435,7 @@ void Reflow_StartAutotune(uint16_t setpoint, uint8_t cycles) {
   at_data.t_last    = 0;
   at_data.amplitude = 255;
   at_data.bias      = 0;
-  numticks          = 0;
+  time.tick         = 0;
 
   LCD_FB_Clear();
   LCD_BMPDisplay(graphbmp, 0, 0);
@@ -411,23 +446,36 @@ void Reflow_StartAutotune(uint16_t setpoint, uint8_t cycles) {
 }
 
 void plotTemperature(uint32_t tick, float temp) {
-  if(tick % (TICKS_PER_SECOND * 5) != 0) {
+  if(tick % (time.tick_per_second * 5) != 0) {
     return;
   }
-  int realx = tick / (TICKS_PER_SECOND * 5) + XAXIS;
+  int realx = tick / (time.tick_per_second * 5) + XAXIS;
   int y     = (uint16_t)(temp * 0.2f);
   y         = YAXIS - y;
   LCD_SetPixel(realx, y);
 }
 
-#define MIN_ON_TIME 5 * TICKS_PER_SECOND
+float Reflow_Autotune_Ku() {
+  float out_amplitude = at_data.max - at_data.min;
+  // formula from paper to get Critical gain. We estimated bias and
+  // half-amplitude to build a PI/2 phase response.
+  float Ku = 4.0 * at_data.amplitude / (float)(M_PI) * (out_amplitude);
+  return Ku;
+}
+
+float Reflow_Autotune_Tu() {
+  float Tu = (float)(at_data.t_up + at_data.t_down) * 1000.0 /
+             (float)AUTOTUNE_TIMEBASE_MS;
+  return Tu;
+}
 
 bool Reflow_RunAutotune(float meastemp,
                         uint8_t* pheat,
                         uint8_t* pfan,
                         int32_t setpoint) {
-  numticks += 1;
-  plotTemperature(numticks, meastemp);
+
+  uint16_t minOnTime = 4 * time.tick_per_second;
+  plotTemperature(time.tick, meastemp);
 
   at_data.max = MATH_MAX(at_data.max, meastemp);
   at_data.min = MATH_MIN(at_data.min, meastemp);
@@ -435,13 +483,13 @@ bool Reflow_RunAutotune(float meastemp,
   if(at_data.rampUp == true) {
     int32_t out = MATH_CLAMP(at_data.amplitude + at_data.bias, -255, 255);
     Reflow_setOuput(out, pheat, pfan);
-    if((numticks - at_data.t_last) < MIN_ON_TIME || meastemp < intsetpoint) {
+    if((time.tick - at_data.t_last) < minOnTime || meastemp < intsetpoint) {
       // not on enough or temp is too low
       return false;
     }
 
-    at_data.t_up   = numticks - at_data.t_last;
-    at_data.t_last = numticks;
+    at_data.t_up   = time.tick - at_data.t_last;
+    at_data.t_last = time.tick;
 
     // start cooling
     at_data.rampUp = false;
@@ -455,28 +503,25 @@ bool Reflow_RunAutotune(float meastemp,
   } else {
     int out = MATH_CLAMP(at_data.bias - at_data.amplitude, -255, 255);
     Reflow_setOuput(out, pheat, pfan);
-    if((numticks - at_data.t_last) < MIN_ON_TIME || meastemp > intsetpoint) {
+    if((time.tick - at_data.t_last) < minOnTime || meastemp > intsetpoint) {
       return false;
     }
 
-    at_data.t_down = numticks - at_data.t_last;
-    at_data.t_last = numticks;
+    at_data.t_down = time.tick - at_data.t_last;
+    at_data.t_last = time.tick;
     at_data.iter += 1;
     printf("\nFinished cycle %d/%d\n", at_data.iter, at_data.Cycles);
 
     float rel_diff =
         fabs(at_data.t_up - at_data.t_down) / (at_data.t_up + at_data.t_down);
     printf("\nUp: %.2fs Down: %.2fs diff: %.2f%% @cycle=%d\n",
-           (float)at_data.t_up / TICKS_PER_SECOND,
-           (float)at_data.t_down / TICKS_PER_SECOND, rel_diff * 200.0,
+           (float)at_data.t_up / time.tick_per_second,
+           (float)at_data.t_down / time.tick_per_second, rel_diff * 200.0,
            at_data.iter - 1);
 
     if(at_data.iter > 1) {
-      float out_amplitude = at_data.max - at_data.min;
-      // formula from paper to get Critical gain.
-      float Ku = 4.0 * at_data.amplitude / (float)(M_PI) * (out_amplitude);
-      float Tu = (float)(at_data.t_up + at_data.t_down) / TICKS_PER_SECOND;
-      printf("\nGot Ku=%.3f Tu=%.3f @cycle=%d\n", Ku, Tu, at_data.iter - 1);
+      printf("\nGot Ku=%.3f Tu=%.3fs @cycle=%d\n", Reflow_Autotune_Ku(),
+             Reflow_Autotune_Tu(), at_data.iter - 1);
     }
 
     if(at_data.iter >= at_data.Cycles) {
@@ -495,7 +540,7 @@ bool Reflow_RunAutotune(float meastemp,
     } else { // maximize cooling
       at_data.amplitude = 255 + at_data.bias;
     }
-    printf("\n bias=%d amplitude=%d @cycle=%d\n", at_data.bias,
+    printf("\n bias=%l amplitude=%l @cycle=%d\n", at_data.bias,
            at_data.amplitude, at_data.iter - 1);
 
     // start heating
