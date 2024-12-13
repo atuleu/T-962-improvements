@@ -285,9 +285,9 @@ void Main_Setup(MainData_t* data) {
   LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), y, FONT6X6);
   y += 7;
 
-#define MAX_DISPLAYED_ITEMS 4
+#define MAX_DISPLAYED_ITEMS 5
   int startidx = 0;
-  int endidx   = MATH_MIN(4, Setup_getNumItems());
+  int endidx   = MATH_MIN(MAX_DISPLAYED_ITEMS, Setup_getNumItems());
   if(selected >= MAX_DISPLAYED_ITEMS) {
     startidx = MAX_DISPLAYED_ITEMS;
     endidx   = MATH_MIN(Setup_getNumItems(), 2 * MAX_DISPLAYED_ITEMS - 1);
@@ -868,7 +868,7 @@ void Main_Autotune(MainData_t* data) {
     float Tu = Reflow_Autotune_Tu();
     Kp       = Ku / 3;
     Ki       = 2 * Kp / Tu;
-    Kd       = Ku * Tu / 3;
+    Kd       = Tu / 3 * Ku;
 
     len = snprintf(buf, sizeof(buf), "Ku=%.1f Tu=%.1fs", Ku, Tu);
     LCD_disp_str((uint8_t*)buf, len, 1, 8 * 1, FONT6X6);

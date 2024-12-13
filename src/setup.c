@@ -30,9 +30,9 @@ static setupMenuStruct setupmenu[] = {
     {"Left TC offset  %+1.2f", TC_LEFT_OFFSET, 0, 200, -100, 0.25f, false},
     {"Right TC gain    %1.2f", TC_RIGHT_GAIN, 10, 190, 0, 0.01f, false},
     {"Right TC offset %+1.2f", TC_RIGHT_OFFSET, 0, 200, -100, 0.25f, false},
-    {"PID K Constant %+1.2f", PID_K_VALUE_H, 0, 10000, 0, 0.1f, true},
-    {"PID I Constant %+1.3f", PID_I_VALUE_H, 0, 1000, 0, 0.001f, true},
-    {"PID D Constant %+1.2f", PID_D_VALUE_H, 0, 10000, 0, 0.1f, true},
+    {"PID K Constant %+1.2f", PID_K_VALUE_H, 0, 1000, 0, 0.1f, true},
+    {"PID I Constant %+1.3f", PID_I_VALUE_H, 0, 10, 0, 0.001f, true},
+    {"PID D Constant %+1.2f", PID_D_VALUE_H, 0, 1000, 0, 0.1f, true},
 };
 
 #define NUM_SETUP_ITEMS (sizeof(setupmenu) / sizeof(setupmenu[0]))
