@@ -492,8 +492,7 @@ float Reflow_Autotune_Ku() {
 }
 
 float Reflow_Autotune_Tu() {
-  float Tu = (float)(at_data.t_up + at_data.t_down) * 1000.0 /
-             (float)AUTOTUNE_TIMEBASE_MS;
+  float Tu = (float)(at_data.t_up + at_data.t_down) / time.tick_per_second;
   return Tu;
 }
 
