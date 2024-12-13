@@ -285,7 +285,7 @@ void Main_Setup(MainData_t* data) {
   LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), y, FONT6X6);
   y += 7;
 
-#define MAX_DISPLAYED_ITEMS 4
+#define MAX_DISPLAYED_ITEMS 5
   int startidx = 0;
   int endidx   = MATH_MIN(MAX_DISPLAYED_ITEMS, Setup_getNumItems());
   if(selected >= MAX_DISPLAYED_ITEMS) {
