@@ -547,13 +547,13 @@ bool Reflow_RunAutotune(float meastemp,
 
     float rel_diff =
         fabs(at_data.t_up - at_data.t_down) / (at_data.t_up + at_data.t_down);
-    printf("\nUp: %.2fs Down: %.2fs diff: %.2f%% @cycle=%d\n",
+    printf("Up: %.2fs Down: %.2fs diff: %.2f%% @cycle=%d\n",
            (float)at_data.t_up / time.tick_per_second,
            (float)at_data.t_down / time.tick_per_second, rel_diff * 200.0,
            at_data.iter - 1);
 
     if(at_data.iter > 1) {
-      printf("\nGot Ku=%.3f Tu=%.3fs @cycle=%d\n", Reflow_Autotune_Ku(),
+      printf("Got Ku=%.3f Tu=%.3fs @cycle=%d\n", Reflow_Autotune_Ku(),
              Reflow_Autotune_Tu(), at_data.iter - 1);
     }
 
@@ -561,19 +561,22 @@ bool Reflow_RunAutotune(float meastemp,
       return true;
     }
 
-    at_data.bias = (at_data.amplitude * (at_data.t_up - at_data.t_down)) /
-                   (at_data.t_up + at_data.t_down);
-    // we ensure that we have a bit of heating or cooling at each cycle
-    at_data.bias = MATH_CLAMP(at_data.bias, -100, 100);
+    if(at_data.iter > 1) {
+      at_data.bias +=
+          (at_data.amplitude / 2 * (at_data.t_up - at_data.t_down)) /
+          (at_data.t_up + at_data.t_down);
+      // we ensure that we have a bit of heating or cooling at each cycle
+      at_data.bias = MATH_CLAMP(at_data.bias, -127, 127);
 
-    // Amplitude is chosen to always maximize cooling or heating
-    if(at_data.bias >= 0) { // maximize heating
-      at_data.amplitude = 255 - at_data.bias;
-    } else { // maximize cooling
-      at_data.amplitude = 255 + at_data.bias;
+      // Amplitude is chosen to always maximize cooling or heating
+      if(at_data.bias >= 0) { // maximize heating
+        at_data.amplitude = 255 - at_data.bias;
+      } else { // maximize cooling
+        at_data.amplitude = 255 + at_data.bias;
+      }
+      printf("new value -> bias=%d amplitude=%d @cycle=%d\n", at_data.bias,
+             at_data.amplitude, at_data.iter - 1);
     }
-    printf("\n bias=%d amplitude=%d @cycle=%d\n", at_data.bias,
-           at_data.amplitude, at_data.iter - 1);
 
     // start heating
     Reflow_at_startHeat(pheat, pfan);
