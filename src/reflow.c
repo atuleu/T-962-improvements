@@ -249,11 +249,13 @@ void Reflow_Init(void) {
 
   PID_SetSampleTime(&PID, PID_TIMEBASE_MS);
   // Adjusted values to compensate for the incorrect timebase earlier
-  PID_SetTunings(&PID, Setup_getValue(PID_K_VALUE_H),
-                 Setup_getValue(PID_I_VALUE_H), Setup_getValue(PID_D_VALUE_H));
+  float Kp = Setup_getValue(PID_K_VALUE_H);
+  float Ki = Setup_getValue(PID_I_VALUE_H);
+  float Kd = Setup_getValue(PID_D_VALUE_H);
+  printf("\nPID parameters are Kp=%.1f Ki=%.3f Kd=%.1f\n", Kp, Ki, Kd);
+  PID_SetTunings(&PID, Kp, Ki, Kd);
 
   RTC_Zero();
-
   // Start work
   Sched_SetState(REFLOW_WORK, 2, 0);
 }
