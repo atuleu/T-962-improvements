@@ -781,7 +781,7 @@ void ProcessUART(MainData_t* data) {
       param = SETPOINT_MIN;
     }
     if(param > SETPOINT_MAX) {
-      printf("\nSetpont must be <= %ddegC\n", SETPOINT_MAX);
+      printf("\nSetpoint must be <= %ddegC\n", SETPOINT_MAX);
       param = SETPOINT_MAX;
     }
     if(param1 < 1) {
