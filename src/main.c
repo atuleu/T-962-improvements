@@ -650,7 +650,7 @@ void Main_Home(MainData_t* data) {
   }
   if(data->keyspressed & KEY_F2) { // Setup/cal
     data->mode = MAIN_SETUP;
-    Reflow_SetMode(REFLOW_STANDBYFAN);
+    Reflow_SetMode(REFLOW_STANDBY);
     data->retval = 0; // Force immediate refresh
   }
 

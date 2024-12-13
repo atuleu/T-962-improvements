@@ -113,12 +113,9 @@ static int32_t Reflow_Work(void) {
     intsetpoint = STANDBYTEMP;
     // Cool to standby temp but don't heat to get there
     heat        = 0;
-    fan         = 255;
-
+    fan =
+        (uint8_t)MATH_CLAMP(30.0 * (avgtemp - (float)STANDBYTEMP), 0.0, 255.0);
     // Suppress slow-running fan in standby
-    if(mymode == REFLOW_STANDBY && avgtemp < (float)STANDBYTEMP) {
-      fan = 0;
-    }
     modestr = "STANDBY";
 
     logging = standby_logging;
