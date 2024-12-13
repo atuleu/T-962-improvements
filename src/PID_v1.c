@@ -60,8 +60,8 @@ FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual) {
   /*Remember some variables for next time*/
   pid->lastError  = error;
 
-  //  printf("\n err: %f Kp: %f Ke: %f Ie: %f De:%f \n", error, pid->kp, kterm,
-  //      pid->ITerm, dterm);
+  printf("\n err: %f Kp: %f Ke: %f Ie: %f De:%f \n", error, pid->kp, kterm,
+         pid->ITerm, dterm);
 
   return MATH_CLAMP(kterm + pid->ITerm + dterm, pid->outMin, pid->outMax);
 }
