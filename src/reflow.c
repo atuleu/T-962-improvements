@@ -402,16 +402,17 @@ void Reflow_ToggleStandbyLogging(void) { standby_logging = !standby_logging; }
 // to adjust the amplitude of the relay controller in order to match the Up and
 // down half-period.
 
-#define AT_CYCLES 6
+#define AT_CYCLES 10
 
 typedef struct {
   uint16_t Target_low, Target_high;
   float max, min;
   int32_t amplitude;
   int32_t bias;
-  int8_t Cycles, iter;
+  int8_t iter, on_target;
   bool rampUp;
   uint16_t t_down, t_up, t_last;
+
 } Autotune_t;
 
 static Autotune_t at_data;
@@ -430,8 +431,7 @@ void Reflow_at_startHeat(uint8_t* pheat, uint8_t* pfan) {
 
   intsetpoint = at_data.Target_high; // do not save it to eeprom
 
-  len = snprintf(buf, sizeof(buf), "Heat [%d/%d]", at_data.iter + 1,
-                 at_data.Cycles);
+  len = snprintf(buf, sizeof(buf), "Heat [%d/%d]", at_data.iter + 1, AT_CYCLES);
   LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
   if(pheat != NULL && pfan != NULL) {
     int32_t out = MATH_CLAMP(at_data.bias + at_data.amplitude, -255, 255);
@@ -445,8 +445,7 @@ void Reflow_at_startCool(uint8_t* pheat, uint8_t* pfan) {
 
   intsetpoint = at_data.Target_low; // do not save it to eeprom
 
-  len = snprintf(buf, sizeof(buf), "Cool [%d/%d]", at_data.iter + 1,
-                 at_data.Cycles);
+  len = snprintf(buf, sizeof(buf), "Cool [%d/%d]", at_data.iter + 1, AT_CYCLES);
   LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
   if(pheat != NULL && pfan != NULL) {
     int32_t out = MATH_CLAMP(at_data.bias - at_data.amplitude, -255, 255);
@@ -454,7 +453,7 @@ void Reflow_at_startCool(uint8_t* pheat, uint8_t* pfan) {
   }
 }
 
-void Reflow_StartAutotune(uint16_t low, uint16_t high, uint8_t cycles) {
+void Reflow_StartAutotune(uint16_t low, uint16_t high) {
   reflowdone = false;
 
   mymode              = REFLOW_AUTOTUNE;
@@ -462,13 +461,13 @@ void Reflow_StartAutotune(uint16_t low, uint16_t high, uint8_t cycles) {
   at_data.Target_low  = MATH_MIN(low, high);
   at_data.max         = 0.0;
   at_data.min         = 1000.0;
-  at_data.Cycles      = MATH_CLAMP(cycles, 2, 10);
   at_data.iter        = -1;
   at_data.t_down      = 0;
   at_data.t_up        = 0;
   at_data.t_last      = 0;
   at_data.amplitude   = 255;
   at_data.bias        = 0;
+  at_data.on_target   = 0;
   time.tick           = 0;
 
   LCD_FB_Clear();
@@ -544,10 +543,17 @@ bool Reflow_RunAutotune(float meastemp,
     at_data.t_down = time.tick - at_data.t_last;
     at_data.t_last = time.tick;
     at_data.iter += 1;
-    printf("\nFinished cycle %d/%d\n", at_data.iter, at_data.Cycles);
+    printf("\nFinished cycle %d/%d\n", at_data.iter, AT_CYCLES);
 
     float rel_diff = 2.0 * fabs(at_data.t_up - at_data.t_down) /
                      (at_data.t_up + at_data.t_down);
+
+    if(rel_diff > 0.05) {
+      at_data.on_target = 0;
+    } else {
+      at_data.on_target++;
+    }
+
     printf("Up: %.2fs Down: %.2fs diff: %.2f%% @cycle=%d\n",
            (float)at_data.t_up / time.tick_per_second,
            (float)at_data.t_down / time.tick_per_second, rel_diff * 100.0,
@@ -558,7 +564,12 @@ bool Reflow_RunAutotune(float meastemp,
              Reflow_Autotune_Tu(), at_data.iter - 1);
     }
 
-    if(at_data.iter >= at_data.Cycles) {
+    if(at_data.on_target >= 2) {
+      printf("Quitting cycles early\n");
+      return true;
+    }
+
+    if(at_data.iter >= AT_CYCLES) {
       return true;
     }
 
