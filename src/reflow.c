@@ -112,8 +112,8 @@ static int32_t Reflow_Work(void) {
     Reflow_setPeriod(PID_TIMEBASE_MS);
     intsetpoint = STANDBYTEMP;
     // Cool to standby temp but don't heat to get there
-    Reflow_RunManual(avgtemp, &heat, &fan, intsetpoint);
-    heat = 0;
+    heat        = 0;
+    fan         = 255;
 
     // Suppress slow-running fan in standby
     if(mymode == REFLOW_STANDBY && avgtemp < (float)STANDBYTEMP) {
