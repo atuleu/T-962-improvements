@@ -544,11 +544,11 @@ bool Reflow_RunAutotune(float meastemp,
     at_data.iter += 1;
     printf("\nFinished cycle %d/%d\n", at_data.iter, at_data.Cycles);
 
-    float rel_diff =
-        fabs(at_data.t_up - at_data.t_down) / (at_data.t_up + at_data.t_down);
+    float rel_diff = 2.0 * fabs(at_data.t_up - at_data.t_down) /
+                     (at_data.t_up + at_data.t_down);
     printf("Up: %.2fs Down: %.2fs diff: %.2f%% @cycle=%d\n",
            (float)at_data.t_up / time.tick_per_second,
-           (float)at_data.t_down / time.tick_per_second, rel_diff * 200.0,
+           (float)at_data.t_down / time.tick_per_second, rel_diff * 100.0,
            at_data.iter - 1);
 
     if(at_data.iter > 1) {
