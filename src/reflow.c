@@ -561,9 +561,8 @@ bool Reflow_RunAutotune(float meastemp,
     }
 
     if(at_data.iter > 1) {
-      at_data.bias +=
-          (at_data.amplitude / 2 * (at_data.t_up - at_data.t_down)) /
-          (at_data.t_up + at_data.t_down);
+      at_data.bias += (at_data.amplitude * (at_data.t_up - at_data.t_down)) /
+                      (at_data.t_up + at_data.t_down);
       // we ensure that we have a bit of heating or cooling at each cycle
       at_data.bias = MATH_CLAMP(at_data.bias, -127, 127);
 
