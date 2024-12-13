@@ -853,7 +853,12 @@ void Main_Autotune(MainData_t* data) {
     return;
   }
 
-  float Kp, Ki, Kd;
+  float Ku = Reflow_Autotune_Ku();
+  float Tu = Reflow_Autotune_Tu();
+  float Kp = Ku / 3;
+  float Ki = 2 * Kp / Tu;
+  float Kd = Tu / 3 * Ku;
+
   if(once == true) {
     once = false;
     printf("\nAutotune done\n");
@@ -864,11 +869,6 @@ void Main_Autotune(MainData_t* data) {
     LCD_FB_Clear();
     len = snprintf(buf, sizeof(buf), "Autotune Results");
     LCD_disp_str((uint8_t*)buf, len, 1, 0, FONT6X6);
-    float Ku = Reflow_Autotune_Ku();
-    float Tu = Reflow_Autotune_Tu();
-    Kp       = Ku / 3;
-    Ki       = 2 * Kp / Tu;
-    Kd       = Tu / 3 * Ku;
 
     len = snprintf(buf, sizeof(buf), "Ku=%.1f Tu=%.1fs", Ku, Tu);
     LCD_disp_str((uint8_t*)buf, len, 1, 8 * 1, FONT6X6);

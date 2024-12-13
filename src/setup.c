@@ -52,7 +52,7 @@ float Setup_getValue(int item) {
   return ((float)intval) * setupmenu[item].multiplier;
 }
 
-void _setRawValue(int item, int value) {
+void _setRawValue(int item, int16_t value) {
   if(setupmenu[item].word) {
     NV_PutWord(setupmenu[item].nvval, value);
   } else {
@@ -61,7 +61,7 @@ void _setRawValue(int item, int value) {
 }
 
 void Setup_setRealValue(int item, float value) {
-  int intval = (int)(value / setupmenu[item].multiplier);
+  int16_t intval = (int)(value / setupmenu[item].multiplier);
   intval -= setupmenu[item].offset;
   _setRawValue(item, intval);
 }

@@ -236,6 +236,11 @@ void Reflow_Init(void) {
 
   Reflow_LoadCustomProfiles();
 
+  float Kp = Setup_getValue(PID_K_VALUE_H);
+  float Ki = Setup_getValue(PID_I_VALUE_H);
+  float Kd = Setup_getValue(PID_D_VALUE_H);
+  printf("\nPID parameters are Kp=%.1f Ki=%.3f Kd=%.1f\n", Kp, Ki, Kd);
+
   Reflow_ValidateNV();
   Sensor_ValidateNV();
 
@@ -249,9 +254,9 @@ void Reflow_Init(void) {
 
   PID_SetSampleTime(&PID, PID_TIMEBASE_MS);
   // Adjusted values to compensate for the incorrect timebase earlier
-  float Kp = Setup_getValue(PID_K_VALUE_H);
-  float Ki = Setup_getValue(PID_I_VALUE_H);
-  float Kd = Setup_getValue(PID_D_VALUE_H);
+  Kp = Setup_getValue(PID_K_VALUE_H);
+  Ki = Setup_getValue(PID_I_VALUE_H);
+  Kd = Setup_getValue(PID_D_VALUE_H);
   printf("\nPID parameters are Kp=%.1f Ki=%.3f Kd=%.1f\n", Kp, Ki, Kd);
   PID_SetTunings(&PID, Kp, Ki, Kd);
 
