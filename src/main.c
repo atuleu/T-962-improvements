@@ -822,9 +822,9 @@ void ProcessUART(MainData_t* data) {
 }
 
 void Main_Autotune(MainData_t* data) {
-  uint32_t ticks = RTC_Read();
-  static bool once;
-  if(Reflow_IsDone() == false) {
+  uint32_t ticks   = RTC_Read();
+  static bool once = true;
+  if(Reflow_IsDone() == false && once == true) {
     len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetSetpoint());
     LCD_disp_str((uint8_t*)"SET", 3, 110, 7, FONT6X6);
     LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
@@ -844,17 +844,18 @@ void Main_Autotune(MainData_t* data) {
     data->mode = MAIN_HOME;
     Reflow_SetMode(REFLOW_STANDBY);
     data->retval = 0;
+    once         = true;
     return;
   }
 
-  if(Reflow_IsDone() == false) {
+  if(Reflow_IsDone() == false && once == true) {
     return;
   }
 
   if(once == true) {
     once = false;
     printf("\nAutotune done\n");
-    Reflow_SetMode(REFLOW_STANDBY);
+    Reflow_SetMode(REFLOW_STANDBY); // will set reflow undone.
     Buzzer_Beep(BUZZ_1KHZ, 255,
                 TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
 
@@ -870,6 +871,7 @@ void Main_Autotune(MainData_t* data) {
     // TODO: set the value
     data->mode   = MAIN_HOME;
     data->retval = 0;
+    once         = true;
     return;
   }
 }
