@@ -825,6 +825,7 @@ void ProcessUART(MainData_t* data) {
 void Main_Autotune(MainData_t* data) {
   uint32_t ticks   = RTC_Read();
   static bool once = true;
+
   if(Reflow_IsDone() == false && once == true) {
     len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetSetpoint());
     LCD_disp_str((uint8_t*)"SET", 3, 110, 7, FONT6X6);
@@ -837,7 +838,6 @@ void Main_Autotune(MainData_t* data) {
     len = snprintf(buf, sizeof(buf), "%03u", (unsigned int)ticks);
     LCD_disp_str((uint8_t*)"RUN", 3, 110, 33, FONT6X6);
     LCD_disp_str((uint8_t*)buf, len, 110, 39, FONT6X6);
-    once = true;
   }
 
   if(data->keyspressed & KEY_S) {
@@ -852,6 +852,7 @@ void Main_Autotune(MainData_t* data) {
   if(Reflow_IsDone() == false && once == true) {
     return;
   }
+
   float Kp, Ki, Kd;
   if(once == true) {
     once = false;
@@ -883,7 +884,7 @@ void Main_Autotune(MainData_t* data) {
   }
 
   if(data->keyspressed & KEY_F1) {
-
+    printf("Setting Kp=%.3f Ki=%.3f Kd=%.3f to NVStorage\n", Kp, Ki, Kd);
     Setup_setRealValue(PID_K_VALUE_H, Kp);
     Setup_setRealValue(PID_I_VALUE_H, Ki);
     Setup_setRealValue(PID_D_VALUE_H, Kd);

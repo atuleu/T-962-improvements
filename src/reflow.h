@@ -11,6 +11,7 @@ typedef enum eReflowMode
   REFLOW_REFLOW,
   REFLOW_STANDBYFAN,
   REFLOW_AUTOTUNE,
+  REFLOW_AUTOTUNE_COOLDOWN,
 } ReflowMode_t;
 
 #define SETPOINT_MIN (30)

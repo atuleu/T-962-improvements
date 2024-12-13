@@ -109,6 +109,7 @@ static int32_t Reflow_Work(void) {
   switch(mymode) {
   case REFLOW_STANDBY:
   case REFLOW_STANDBYFAN:
+  case REFLOW_AUTOTUNE_COOLDOWN:
     Reflow_setPeriod(PID_TIMEBASE_MS);
     intsetpoint = STANDBYTEMP;
     // Cool to standby temp but don't heat to get there
@@ -134,9 +135,13 @@ static int32_t Reflow_Work(void) {
     break;
   case REFLOW_AUTOTUNE:
     Reflow_setPeriod(AUTOTUNE_TIMEBASE_MS);
-    reflowdone = Reflow_RunAutotune(avgtemp, &heat, &fan, intsetpoint);
     modestr    = "AUTOTUNE";
     logging    = false;
+    reflowdone = Reflow_RunAutotune(avgtemp, &heat, &fan, intsetpoint);
+    if(reflowdone == true) {
+      // we switch to standby mode immediatly once autotune is done.
+      mymode = REFLOW_AUTOTUNE_COOLDOWN;
+    }
     break;
   default:
     Reflow_setPeriod(PID_TIMEBASE_MS);
