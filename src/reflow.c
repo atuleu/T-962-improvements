@@ -487,8 +487,9 @@ void plotTemperature(uint32_t tick, float temp) {
 float Reflow_Autotune_Ku() {
   float out_amplitude = at_data.max - at_data.min;
   // formula from paper to get Critical gain. We estimated bias and
-  // half-amplitude to build a PI/2 phase response.
-  float Ku = 4.0 * at_data.amplitude / ((float)(3.14159265) * out_amplitude);
+  // half-amplitude to build a PI/2 phase response. Using ideal relay we got:
+  float Ku            = 4.0 * at_data.amplitude * 2.0 /
+             ((float)(3.14159265) * out_amplitude * 0.5f);
   return Ku;
 }
 
