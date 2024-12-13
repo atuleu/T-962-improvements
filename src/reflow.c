@@ -403,6 +403,7 @@ void Reflow_ToggleStandbyLogging(void) { standby_logging = !standby_logging; }
 #define AT_CYCLES 6
 
 typedef struct {
+  uint16_t Target_low, Target_high;
   float max, min;
   int32_t amplitude;
   int32_t bias;
@@ -421,30 +422,57 @@ static int len;
 
 void Reflow_lcdStatus(char* msg, int len) {}
 
-void Reflow_StartAutotune(uint16_t setpoint, uint8_t cycles) {
-  reflowdone        = false;
-  intsetpoint       = setpoint; // do not save it to eeprom
-  mymode            = REFLOW_AUTOTUNE;
-  at_data.max       = 0.0;
-  at_data.min       = 1000.0;
-  at_data.Cycles    = cycles;
-  at_data.iter      = 0;
-  at_data.rampUp    = true;
-  at_data.t_down    = 0;
-  at_data.t_up      = 0;
-  at_data.t_last    = 0;
-  at_data.amplitude = 255;
-  at_data.bias      = 0;
-  time.tick         = 0;
+void Reflow_at_startHeat(uint8_t* pheat, uint8_t* pfan) {
+  at_data.rampUp = true;
+  at_data.max    = at_data.Target_low;
+
+  intsetpoint = at_data.Target_high; // do not save it to eeprom
+
+  len = snprintf(buf, sizeof(buf), "Heat [%d/%d]", at_data.iter + 1,
+                 at_data.Cycles);
+  LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
+  if(pheat != NULL && pfan != NULL) {
+    int32_t out = MATH_CLAMP(at_data.bias + at_data.amplitude, -255, 255);
+    Reflow_setOuput(out, pheat, pfan);
+  }
+}
+
+void Reflow_at_startCool(uint8_t* pheat, uint8_t* pfan) {
+  at_data.rampUp = false;
+  at_data.min    = at_data.Target_high;
+
+  intsetpoint = at_data.Target_low; // do not save it to eeprom
+
+  len = snprintf(buf, sizeof(buf), "Cool [%d/%d]", at_data.iter + 1,
+                 at_data.Cycles);
+  LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
+  if(pheat != NULL && pfan != NULL) {
+    int32_t out = MATH_CLAMP(at_data.bias - at_data.amplitude, -255, 255);
+    Reflow_setOuput(out, pheat, pfan);
+  }
+}
+
+void Reflow_StartAutotune(uint16_t low, uint16_t high, uint8_t cycles) {
+  reflowdone = false;
+
+  mymode              = REFLOW_AUTOTUNE;
+  at_data.Target_high = MATH_MAX(low, high);
+  at_data.Target_low  = MATH_MIN(low, high);
+  at_data.max         = 0.0;
+  at_data.min         = 1000.0;
+  at_data.Cycles      = MATH_CLAMP(cycles, 2, 10);
+  at_data.iter        = -1;
+  at_data.t_down      = 0;
+  at_data.t_up        = 0;
+  at_data.t_last      = 0;
+  at_data.amplitude   = 255;
+  at_data.bias        = 0;
+  time.tick           = 0;
 
   LCD_FB_Clear();
   LCD_BMPDisplay(graphbmp, 0, 0);
   LCD_BMPDisplay(stopbmp, 127 - 17, 0);
-  len = snprintf(buf, sizeof(buf), "Heat [%d/%d]", at_data.iter + 1,
-                 at_data.Cycles);
-  LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
 }
-
 void plotTemperature(uint32_t tick, float temp) {
   if(tick % (time.tick_per_second * 5) != 0) {
     return;
@@ -459,7 +487,7 @@ float Reflow_Autotune_Ku() {
   float out_amplitude = at_data.max - at_data.min;
   // formula from paper to get Critical gain. We estimated bias and
   // half-amplitude to build a PI/2 phase response.
-  float Ku = 4.0 * at_data.amplitude / (float)(M_PI) * (out_amplitude);
+  float Ku = 4.0 * at_data.amplitude / ((float)(3.14159265) * out_amplitude);
   return Ku;
 }
 
@@ -480,10 +508,17 @@ bool Reflow_RunAutotune(float meastemp,
   at_data.max = MATH_MAX(at_data.max, meastemp);
   at_data.min = MATH_MIN(at_data.min, meastemp);
 
+  if(at_data.iter < 0) {
+    Reflow_at_startHeat(pheat, pfan);
+    at_data.iter = 0;
+    return false;
+  }
+
   if(at_data.rampUp == true) {
     int32_t out = MATH_CLAMP(at_data.amplitude + at_data.bias, -255, 255);
     Reflow_setOuput(out, pheat, pfan);
-    if((time.tick - at_data.t_last) < minOnTime || meastemp < intsetpoint) {
+    if((time.tick - at_data.t_last) < minOnTime ||
+       meastemp < at_data.Target_high) {
       // not on enough or temp is too low
       return false;
     }
@@ -494,16 +529,14 @@ bool Reflow_RunAutotune(float meastemp,
     // start cooling
     at_data.rampUp = false;
     at_data.min    = meastemp;
-    len = snprintf(buf, sizeof(buf), "Cool [%d/%d]", at_data.iter + 1,
-                   at_data.Cycles);
-    LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
-    out = MATH_CLAMP(at_data.bias - at_data.amplitude, -255, 255);
-    Reflow_setOuput(out, pheat, pfan);
+
+    Reflow_at_startCool(pheat, pfan);
     return false;
   } else {
-    int out = MATH_CLAMP(at_data.bias - at_data.amplitude, -255, 255);
+    int32_t out = MATH_CLAMP(at_data.bias - at_data.amplitude, -255, 255);
     Reflow_setOuput(out, pheat, pfan);
-    if((time.tick - at_data.t_last) < minOnTime || meastemp > intsetpoint) {
+    if((time.tick - at_data.t_last) < minOnTime ||
+       meastemp > at_data.Target_low) {
       return false;
     }
 
@@ -525,7 +558,6 @@ bool Reflow_RunAutotune(float meastemp,
     }
 
     if(at_data.iter >= at_data.Cycles) {
-      // TODO: end autotune here
       return true;
     }
 
@@ -540,17 +572,11 @@ bool Reflow_RunAutotune(float meastemp,
     } else { // maximize cooling
       at_data.amplitude = 255 + at_data.bias;
     }
-    printf("\n bias=%l amplitude=%l @cycle=%d\n", at_data.bias,
+    printf("\n bias=%d amplitude=%d @cycle=%d\n", at_data.bias,
            at_data.amplitude, at_data.iter - 1);
 
     // start heating
-    at_data.rampUp = true;
-    at_data.max    = meastemp;
-    len = snprintf(buf, sizeof(buf), "Heat [%d/%d]", at_data.iter + 1,
-                   at_data.Cycles);
-    LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
-    out = MATH_CLAMP(at_data.bias + at_data.amplitude, -255, 255);
-    Reflow_setOuput(out, pheat, pfan);
+    Reflow_at_startHeat(pheat, pfan);
     return false;
   }
 }

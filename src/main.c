@@ -77,7 +77,8 @@ static char* help_text =
     " select profile <id>     Select reflow profile by id\n"
     " stop                    Exit reflow or bake mode\n"
     " values                  Dump currently measured values\n"
-    " PID autotune <t> <k>    Runs PID autotuning procedure\n"
+    " autotune <k> <l> <h>    Runs PID autotuning procedure for <k> \n"
+    "                         cycles between <l> and <h> temperature\n"
     "\n";
 
 static int32_t Main_Work(void);
@@ -686,7 +687,7 @@ void ProcessUART(MainData_t* data) {
   char* cmd_bake              = "bake %d %d";
   char* cmd_dump_profile      = "dump profile %d";
   char* cmd_setting           = "setting %d %f";
-  char* cmd_autotune          = "PID autotune %d %f";
+  char* cmd_autotune          = "PID autotune %d %d %f";
 
   static int read = 0;
 
@@ -811,9 +812,9 @@ void ProcessUART(MainData_t* data) {
     Setup_setRealValue(param, paramF);
     printf("\nAdjusted setting: ");
     Setup_printFormattedValue(param);
-  } else if(sscanf(serial_cmd, cmd_autotune, &param, &paramF) > 0) {
+  } else if(sscanf(serial_cmd, cmd_autotune, &param, &param1, &paramF) > 0) {
     Reflow_Init();
-    Reflow_StartAutotune(paramF, param);
+    Reflow_StartAutotune(param1, paramF, param);
     data->mode = MAIN_AUTOTUNE;
   } else {
     printf("\nCannot understand command '%s', ? for help\n", serial_cmd);
