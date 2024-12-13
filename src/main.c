@@ -18,6 +18,7 @@
  */
 
 #include "LPC214x.h"
+#include "PID_v1.h"
 #include "adc.h"
 #include "buzzer.h"
 #include "eeprom.h"
@@ -851,7 +852,7 @@ void Main_Autotune(MainData_t* data) {
   if(Reflow_IsDone() == false && once == true) {
     return;
   }
-
+  float Kp, Ki, Kd;
   if(once == true) {
     once = false;
     printf("\nAutotune done\n");
@@ -860,15 +861,35 @@ void Main_Autotune(MainData_t* data) {
                 TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
 
     LCD_FB_Clear();
-    len = snprintf(buf, sizeof(buf), "Autotune Result");
+    len = snprintf(buf, sizeof(buf), "Autotune Results");
     LCD_disp_str((uint8_t*)buf, len, 1, 0, FONT6X6);
-    len = snprintf(buf, sizeof(buf), "Ku=%.1f Tu=%.1fs", Reflow_Autotune_Ku(),
-                   Reflow_Autotune_Tu());
+    float Ku = Reflow_Autotune_Ku();
+    float Tu = Reflow_Autotune_Tu();
+    Kp       = Ku / 3;
+    Ki       = 2 * Kp / Tu;
+    Kd       = Ku * Tu / 3;
+
+    len = snprintf(buf, sizeof(buf), "Ku=%.1f Tu=%.1fs", Ku, Tu);
     LCD_disp_str((uint8_t*)buf, len, 1, 1, FONT6X6);
+
+    len = snprintf(buf, sizeof(buf), "Kp=%.3f", Kp);
+    LCD_disp_str((uint8_t*)buf, len, 2, 1, FONT6X6);
+    len = snprintf(buf, sizeof(buf), "Ki=%.3f", Ki);
+    LCD_disp_str((uint8_t*)buf, len, 3, 1, FONT6X6);
+    len = snprintf(buf, sizeof(buf), "Kd=%.3f", Kd);
+    LCD_disp_str((uint8_t*)buf, len, 3, 1, FONT6X6);
+    len = snprintf(buf, sizeof(buf), "Press F1 to save");
+    LCD_disp_str((uint8_t*)buf, len, 4, 1, FONT6X6);
   }
 
   if(data->keyspressed & KEY_F1) {
-    // TODO: set the value
+
+    Setup_setRealValue(PID_K_VALUE_H, Kp);
+    Setup_setRealValue(PID_I_VALUE_H, Ki);
+    Setup_setRealValue(PID_D_VALUE_H, Kd);
+    Reflow_Init();
+    Reflow_SetMode(REFLOW_STANDBY);
+
     data->mode   = MAIN_HOME;
     data->retval = 0;
     once         = true;
