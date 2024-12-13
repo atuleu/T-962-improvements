@@ -241,8 +241,7 @@ void Reflow_Init(void) {
 
   Reflow_LoadSetpoint();
 
-  PID_SetMode(&PID, PID_Mode_Manual);
-  PID_SetMode(&PID, PID_Mode_Automatic);
+  PID_Reset(&PID);
 
   PID_init(&PID, 0, 0, 0);
   PID_SetOutputLimits(&PID, -255, 255);
@@ -344,7 +343,6 @@ bool Reflow_RunProfile(uint32_t thetime,
                        float meastemp,
                        uint8_t* pheat,
                        uint8_t* pfan) {
-
   float target;
 
   // Figure out what setpoint to use from the profile, brute-force way. Fix
@@ -352,6 +350,7 @@ bool Reflow_RunProfile(uint32_t thetime,
   uint8_t idx     = thetime / 10;
   uint16_t start  = idx * 10;
   uint16_t offset = thetime - start;
+
   if(idx < (NUMPROFILETEMPS - 2)) {
     uint16_t valueStartOfSegment = Reflow_GetSetpointAtIdx(idx);
     uint16_t valueEndOfSegment   = Reflow_GetSetpointAtIdx(idx + 1);
@@ -381,7 +380,6 @@ bool Reflow_RunProfile(uint32_t thetime,
       return true;
     }
   } else { // no more segment in profile
-
     // same as above, we ensure we are not heating for any reason.
     *pheat = 0;
     return true;
@@ -393,7 +391,9 @@ bool Reflow_RunProfile(uint32_t thetime,
   y         = YAXIS - y;
   LCD_SetPixel(realx, y);
 
-  Reflow_setOuput(PID_Compute(&PID, target, meastemp), pheat, pfan);
+  float out = PID_Compute(&PID, target, meastemp);
+
+  Reflow_setOuput(out, pheat, pfan);
 
   return false;
 }
@@ -592,7 +592,7 @@ bool Reflow_RunAutotune(float meastemp,
       } else { // maximize cooling
         at_data.amplitude = 255 + at_data.bias;
       }
-      printf("new value -> bias=%d amplitude=%d @cycle=%d\n", at_data.bias,
+      printf(" + new values: bias=%d amplitude=%d @cycle=%d\n", at_data.bias,
              at_data.amplitude, at_data.iter - 1);
     }
 

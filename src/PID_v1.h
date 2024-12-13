@@ -5,13 +5,6 @@ typedef float FloatType;
 // typedef double floatType;
 #include <stdbool.h>
 
-// Constants used in some of the functions below
-typedef enum
-{
-  PID_Mode_Automatic = 1,
-  PID_Mode_Manual    = 0
-} PidModeType;
-
 typedef struct {
   FloatType dispKp; // * we'll hold on to the tuning parameters in user-entered
   FloatType dispKi; //   format for display purposes
@@ -26,7 +19,6 @@ typedef struct {
 
   unsigned long SampleTime;
   FloatType outMin, outMax;
-  bool inAuto;
 } PidType;
 
 // commonly used functions
@@ -36,8 +28,8 @@ typedef struct {
 //  Setpoint.  Initial tuning parameters are also set here
 void PID_init(PidType* pid, FloatType kp, FloatType ki, FloatType kd);
 
-// sets PID to either Manual (0) or Auto (non-0)
-void PID_SetMode(PidType* pid, PidModeType mode);
+// resets pid
+void PID_Reset(PidType* pid);
 
 // performs the PID calculation.  it should be
 // called every time loop() cycles. ON/OFF and
@@ -71,7 +63,6 @@ void PID_SetSampleTime(PidType* pid, int newSampleTime);
 FloatType PID_GetKp(PidType* pid);
 FloatType PID_GetKi(PidType* pid);
 FloatType PID_GetKd(PidType* pid);
-PidModeType PID_GetMode(PidType* pid);
 
 // void PID_Initialize(PidType* pid);
 #endif

@@ -19,7 +19,6 @@ void PID_Initialize(PidType* pid);
 void PID_init(PidType* pid, FloatType Kp, FloatType Ki, FloatType Kd) {
   pid->ITerm     = 0;
   pid->lastError = NAN;
-  pid->inAuto    = false;
 
   PID_SetOutputLimits(pid, 0, 0xffff);
 
@@ -39,9 +38,6 @@ void PID_init(PidType* pid, FloatType Kp, FloatType Ki, FloatType Kd) {
  *computed, false when nothing has been done.
  **********************************************************************************/
 FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual) {
-  if(!pid->inAuto) {
-    return NAN;
-  }
   // printf("\nPID target: %f, actual: %f\n", target, actual);
 
   //  unsigned long now = millis();
@@ -59,9 +55,6 @@ FloatType PID_Compute(PidType* pid, FloatType target, FloatType actual) {
   FloatType dterm = pid->kd * dError;
   /*Remember some variables for next time*/
   pid->lastError  = error;
-
-  printf("\n err: %f Kp: %f Ke: %f Ie: %f De:%f \n", error, pid->kp, kterm,
-         pid->ITerm, dterm);
 
   return MATH_CLAMP(kterm + pid->ITerm + dterm, pid->outMin, pid->outMax);
 }
@@ -115,29 +108,14 @@ void PID_SetOutputLimits(PidType* pid, FloatType Min, FloatType Max) {
   pid->outMin = Min;
   pid->outMax = Max;
 
-  if(pid->inAuto) {
-    pid->ITerm = MATH_CLAMP(pid->ITerm, Min, Max);
-  }
-}
-
-/* SetMode(...)****************************************************************
- * Allows the controller Mode to be set to manual (0) or Automatic (non-zero)
- * when the transition from manual to auto occurs, the controller is
- * automatically initialized
- ******************************************************************************/
-void PID_SetMode(PidType* pid, PidModeType Mode) {
-  bool newAuto = (Mode == PID_Mode_Automatic);
-  if(newAuto == !pid->inAuto) { /*we just went from manual to auto*/
-    PID_Initialize(pid);
-  }
-  pid->inAuto = newAuto;
+  pid->ITerm = MATH_CLAMP(pid->ITerm, Min, Max);
 }
 
 /* Initialize()****************************************************************
  *  does all the things that need to happen to ensure a bumpless transfer
  *  from manual to automatic mode.
  ******************************************************************************/
-void PID_Initialize(PidType* pid) {
+void PID_Reset(PidType* pid) {
   pid->ITerm     = MATH_CLAMP(0, pid->outMin, pid->outMax);
   pid->lastError = NAN;
 }
@@ -150,6 +128,3 @@ void PID_Initialize(PidType* pid) {
 FloatType PID_GetKp(PidType* pid) { return pid->dispKp; }
 FloatType PID_GetKi(PidType* pid) { return pid->dispKi; }
 FloatType PID_GetKd(PidType* pid) { return pid->dispKd; }
-PidModeType PID_GetMode(PidType* pid) {
-  return pid->inAuto ? PID_Mode_Automatic : PID_Mode_Manual;
-}
