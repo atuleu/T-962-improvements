@@ -15,6 +15,10 @@ typedef struct {
   const bool word;
 } setupMenuStruct;
 
+#define SETTINGS_PID_KP 6
+#define SETTINGS_PID_KI 7
+#define SETTINGS_PID_KD 8
+
 int Setup_getNumItems(void);
 float Setup_getValue(int item);
 void Setup_setRealValue(int item, float value);

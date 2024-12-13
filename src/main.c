@@ -884,11 +884,12 @@ void Main_Autotune(MainData_t* data) {
   }
 
   if(data->keyspressed & KEY_F1) {
-    printf("Setting Kp=%.3f Ki=%.3f Kd=%.3f to NVStorage\n", Kp, Ki, Kd);
-    Setup_setRealValue(PID_K_VALUE_H, Kp);
-    Setup_setRealValue(PID_I_VALUE_H, Ki);
-    Setup_setRealValue(PID_D_VALUE_H, Kd);
-    Reflow_Init();
+    printf("\nSetting Kp=%.3f Ki=%.3f Kd=%.3f to NVStorage\n", Kp, Ki, Kd);
+    Setup_setRealValue(SETTINGS_PID_KP, Kp);
+    Setup_setRealValue(SETTINGS_PID_KI, Ki);
+    Setup_setRealValue(SETTINGS_PID_KD, Kd);
+
+    Reflow_UpdatePID(Kp, Ki, Kd);
     Reflow_SetMode(REFLOW_STANDBY);
 
     data->mode   = MAIN_HOME;

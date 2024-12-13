@@ -236,11 +236,6 @@ void Reflow_Init(void) {
 
   Reflow_LoadCustomProfiles();
 
-  float Kp = Setup_getValue(PID_K_VALUE_H);
-  float Ki = Setup_getValue(PID_I_VALUE_H);
-  float Kd = Setup_getValue(PID_D_VALUE_H);
-  printf("\nPID parameters are Kp=%.1f Ki=%.3f Kd=%.1f\n", Kp, Ki, Kd);
-
   Reflow_ValidateNV();
   Sensor_ValidateNV();
 
@@ -254,11 +249,10 @@ void Reflow_Init(void) {
 
   PID_SetSampleTime(&PID, PID_TIMEBASE_MS);
   // Adjusted values to compensate for the incorrect timebase earlier
-  Kp = Setup_getValue(PID_K_VALUE_H);
-  Ki = Setup_getValue(PID_I_VALUE_H);
-  Kd = Setup_getValue(PID_D_VALUE_H);
-  printf("\nPID parameters are Kp=%.1f Ki=%.3f Kd=%.1f\n", Kp, Ki, Kd);
-  PID_SetTunings(&PID, Kp, Ki, Kd);
+  float Kp = Setup_getValue(SETTINGS_PID_KP);
+  float Ki = Setup_getValue(SETTINGS_PID_KI);
+  float Kd = Setup_getValue(SETTINGS_PID_KD);
+  Reflow_UpdatePID(Kp, Ki, Kd);
 
   RTC_Zero();
   // Start work
@@ -273,11 +267,16 @@ void Reflow_SetMode(ReflowMode_t themode) {
   }
 }
 
-void Reflow_SetSetpoint(uint16_t thesetpoint) {
-	intsetpoint = thesetpoint;
+void Reflow_UpdatePID(float Kp, float Ki, float Kd) {
+  printf("\nPID parameters are Kp=%.1f Ki=%.3f Kd=%.1f\n", Kp, Ki, Kd);
+  PID_SetTunings(&PID, Kp, Ki, Kd);
+}
 
-	NV_SetConfig(REFLOW_BAKE_SETPOINT_H, (uint8_t)(thesetpoint >> 8));
-	NV_SetConfig(REFLOW_BAKE_SETPOINT_L, (uint8_t)thesetpoint);
+void Reflow_SetSetpoint(uint16_t thesetpoint) {
+  intsetpoint = thesetpoint;
+
+  NV_SetConfig(REFLOW_BAKE_SETPOINT_H, (uint8_t)(thesetpoint >> 8));
+  NV_SetConfig(REFLOW_BAKE_SETPOINT_L, (uint8_t)thesetpoint);
 }
 
 void Reflow_LoadSetpoint(void) {
