@@ -871,16 +871,16 @@ void Main_Autotune(MainData_t* data) {
     Kd       = Ku * Tu / 3;
 
     len = snprintf(buf, sizeof(buf), "Ku=%.1f Tu=%.1fs", Ku, Tu);
-    LCD_disp_str((uint8_t*)buf, len, 1, 1, FONT6X6);
+    LCD_disp_str((uint8_t*)buf, len, 1, 8 * 1, FONT6X6);
 
     len = snprintf(buf, sizeof(buf), "Kp=%.3f", Kp);
-    LCD_disp_str((uint8_t*)buf, len, 1, 2, FONT6X6);
+    LCD_disp_str((uint8_t*)buf, len, 1, 8 * 2, FONT6X6);
     len = snprintf(buf, sizeof(buf), "Ki=%.3f", Ki);
-    LCD_disp_str((uint8_t*)buf, len, 1, 3, FONT6X6);
+    LCD_disp_str((uint8_t*)buf, len, 1, 8 * 3, FONT6X6);
     len = snprintf(buf, sizeof(buf), "Kd=%.3f", Kd);
-    LCD_disp_str((uint8_t*)buf, len, 1, 4, FONT6X6);
+    LCD_disp_str((uint8_t*)buf, len, 1, 8 * 4, FONT6X6);
     len = snprintf(buf, sizeof(buf), "Press F1 to save");
-    LCD_disp_str((uint8_t*)buf, len, 1, 5, FONT6X6);
+    LCD_disp_str((uint8_t*)buf, len, 1, 8 * 5, FONT6X6);
   }
 
   if(data->keyspressed & KEY_F1) {
