@@ -584,7 +584,7 @@ bool Reflow_RunAutotune(float meastemp,
       at_data.bias += (at_data.amplitude * (at_data.t_up - at_data.t_down)) /
                       (at_data.t_up + at_data.t_down);
       // we ensure that we have a bit of heating or cooling at each cycle
-      at_data.bias = MATH_CLAMP(at_data.bias, -127, 127);
+      at_data.bias = MATH_CLAMP(at_data.bias, -107, 107);
 
       // Amplitude is chosen to always maximize cooling or heating
       if(at_data.bias >= 0) { // maximize heating
